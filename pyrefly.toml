@@ -1,0 +1,11 @@
+# Second type checker, run alongside pyright on purpose -- not a migration.
+# A handful of `# type: ignore` suppressions pyright needs for genuinely
+# hard-to-type cases are honored by pyrefly's default ignore-handling too,
+# so both checkers are kept in parity deliberately: two different inference
+# engines over the same code tend to catch different things.
+#
+# pyrefly is young and its config schema evolves -- check
+# https://pyrefly.org/ for the current keys before relying on this file.
+
+project-includes = ["src", "tests"]
+python-version = "3.14"

@@ -1,0 +1,14 @@
+name: pytest
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --all-groups --frozen
+      - run: uv run --frozen pytest -n auto --cov=min_cpu_forth --cov-report=xml

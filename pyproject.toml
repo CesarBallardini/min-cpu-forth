@@ -1,0 +1,42 @@
+[project]
+name = "min-cpu-forth"
+version = "0.1.0"
+description = "A minimal virtual CPU instruction set and inner interpreter for an Indirect Threaded Code (ITC) Forth."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/min_cpu_forth"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-cov",
+    "pytest-xdist",
+    "pytest-bdd",
+    "pytest-playwright",
+    "factory-boy",
+    "faker",
+    "ruff",
+    "pyright",
+    "pyrefly",
+    "bandit[toml]",
+    "pip-audit",
+    "pre-commit",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers -m 'not e2e and not snapshot'"
+testpaths = ["tests"]
+markers = [
+    "unit: fast tests with no external dependencies",
+    "integration: tests that need a real database or service",
+    "bdd: behavior-driven acceptance tests (pytest-bdd, Gherkin)",
+    "e2e: end-to-end tests against a running instance (Playwright)",
+    "snapshot: snapshot tests, excluded by default, run on demand",
+]

@@ -1,0 +1,45 @@
+line-length = 119
+target-version = "py314"
+
+# docs/prototypes holds frozen historical scripts (see CLAUDE.md) -- not
+# maintained code, so it's not linted. force-exclude so this also applies
+# when pre-commit passes explicit filenames rather than scanning `.`.
+exclude = ["docs"]
+force-exclude = true
+
+[lint]
+select = [
+    "E", "F", "W",  # pycodestyle + pyflakes
+    "I",            # isort
+    "N",            # pep8-naming
+    "UP",           # pyupgrade
+    "B",            # flake8-bugbear
+    "S",            # flake8-bandit
+    "SIM",          # flake8-simplify
+    "RET",          # flake8-return
+    "PIE",          # flake8-pie
+    "TCH",          # flake8-type-checking
+    "YTT",          # flake8-2020
+    "D",            # pydocstyle
+]
+ignore = [
+    "D203",  # one-blank-line-before-class -- conflicts with D211
+    "D213",  # multi-line-summary-second-line -- conflicts with D212
+]
+
+[lint.pydocstyle]
+convention = "google"
+
+[lint.mccabe]
+max-complexity = 15
+
+[lint.per-file-ignores]
+# assert is the idiomatic way to write a test assertion; it's disallowed
+# in application code because `python -O` strips asserts at runtime.
+"tests/**" = ["S101", "D"]
+# pytest-bdd step files need real (non-TYPE_CHECKING) imports: it resolves
+# step-parameter annotations via inspect.signature() at call time.
+"tests/acceptance/steps/**" = ["S101", "D", "TC001"]
+
+[format]
+quote-style = "single"
