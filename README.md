@@ -1,5 +1,9 @@
 # min-cpu-forth
 
+[![check](https://github.com/CesarBallardini/min-cpu-forth/actions/workflows/check.yml/badge.svg)](https://github.com/CesarBallardini/min-cpu-forth/actions/workflows/check.yml)
+[![pytest](https://github.com/CesarBallardini/min-cpu-forth/actions/workflows/pytest.yml/badge.svg)](https://github.com/CesarBallardini/min-cpu-forth/actions/workflows/pytest.yml)
+[![security](https://github.com/CesarBallardini/min-cpu-forth/actions/workflows/security.yml/badge.svg)](https://github.com/CesarBallardini/min-cpu-forth/actions/workflows/security.yml)
+
 A design exploration of a minimal virtual CPU instruction set purpose-built to run an
 **Indirect Threaded Code (ITC) Forth** interpreter, plus a Python implementation of that
 model: a small `CPU` (flat memory, a data stack, and a return stack) and a `ForthExecutioner`
