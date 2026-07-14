@@ -8,6 +8,7 @@ memory and stacks.
 
 from dependency_injector import containers, providers
 
+from min_cpu_forth.adapters.dictionary import MemoryDictionaryAdapter
 from min_cpu_forth.adapters.io import (
     BufferCharacterOutputAdapter,
     QueueCharacterInputAdapter,
@@ -15,6 +16,7 @@ from min_cpu_forth.adapters.io import (
 from min_cpu_forth.adapters.memory import ListMemoryAdapter
 from min_cpu_forth.adapters.registers import DictRegisterFileAdapter
 from min_cpu_forth.adapters.stack import DownwardStackAdapter
+from min_cpu_forth.adapters.system_variables import MemorySystemVariablesAdapter
 from min_cpu_forth.layout import (
     DATA_STACK_BASE,
     DATA_STACK_SIZE,
@@ -82,8 +84,11 @@ class KernelContainer(containers.DeclarativeContainer):
     machine = providers.Container(MachineContainer)
     assembler_stages = providers.Container(AssemblerContainer)
 
+    system_variables = providers.Singleton(MemorySystemVariablesAdapter, memory=machine.memory)
+    dictionary = providers.Singleton(MemoryDictionaryAdapter, memory=machine.memory, system_variables=system_variables)
+
     kernel_builder = providers.Factory(
         KernelBuilder,
         assembler=assembler_stages.assembler,
-        memory=machine.memory,
+        dictionary=dictionary,
     )

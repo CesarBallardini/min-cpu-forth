@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from min_cpu_forth.containers import AssemblerContainer, MachineContainer
+from min_cpu_forth.containers import AssemblerContainer, KernelContainer, MachineContainer
 
 if TYPE_CHECKING:
     from min_cpu_forth.adapters.io import (
@@ -85,3 +85,9 @@ def forth_registers(machine: MachineContainer) -> RegisterFilePort:
 def assembler() -> AssemblerPort:
     """A text assembler wired from its three stages."""
     return AssemblerContainer().assembler()
+
+
+@pytest.fixture
+def kernel() -> KernelContainer:
+    """A fresh kernel container (its own machine + assembler) per test."""
+    return KernelContainer()

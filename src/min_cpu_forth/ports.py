@@ -8,13 +8,16 @@ container. Nothing here imports an adapter -- the dependency arrow points inward
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator, Sequence
+
     from min_cpu_forth.domain.dtos import (
         AssemblyDto,
+        DictionaryHeaderDto,
         InstructionDto,
         LineDto,
         ResolvedProgramDto,
     )
-    from min_cpu_forth.domain.types import Address, Cell
+    from min_cpu_forth.domain.types import Address, Cell, ProgramIndex
 
 
 @runtime_checkable
@@ -135,4 +138,57 @@ class AssemblerPort(Protocol):
 
     def assemble(self, source: str) -> AssemblyDto:
         """Assemble ``source`` into a program plus its symbol table."""
+        ...
+
+
+@runtime_checkable
+class SystemVariablesPort(Protocol):
+    """The Forth system variables held as fixed cells in ``cpu.mem`` (``DP``/HERE, ``LATEST``)."""
+
+    @property
+    def dp(self) -> Address:
+        """The dictionary pointer (HERE): the next free dictionary cell."""
+        ...
+
+    @dp.setter
+    def dp(self, value: Address) -> None: ...
+
+    @property
+    def latest(self) -> Address:
+        """The name field of the most recently defined word (root of the link chain)."""
+        ...
+
+    @latest.setter
+    def latest(self, value: Address) -> None: ...
+
+
+@runtime_checkable
+class DictionaryPort(Protocol):
+    """The Forth dictionary: append word headers/threads and search the link chain."""
+
+    def here(self) -> Address:
+        """The next free dictionary cell (``DP``)."""
+        ...
+
+    def append_cell(self, value: int) -> Address:
+        """Append one raw cell and return the address it was written to."""
+        ...
+
+    def append_word(
+        self,
+        name: str,
+        code_field: ProgramIndex,
+        thread: Sequence[Address] = (),
+        *,
+        immediate: bool = False,
+    ) -> Address:
+        """Append a word (header + code field + optional colon ``thread``); return its CFA."""
+        ...
+
+    def find(self, name: str) -> DictionaryHeaderDto | None:
+        """Return the header of ``name``, walking newest-first, or ``None`` if absent."""
+        ...
+
+    def headers(self) -> Iterator[DictionaryHeaderDto]:
+        """Yield every installed word's header, newest first (the ``LATEST`` link chain)."""
         ...

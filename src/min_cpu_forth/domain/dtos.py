@@ -7,6 +7,7 @@ data, so it deliberately does not.
 """
 
 from dataclasses import dataclass, field
+from enum import IntEnum
 from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
@@ -111,6 +112,32 @@ class LiteralCellDto:
 
 
 type ThreadItemDto = WordReferenceDto | LiteralCellDto
+
+
+class HeaderField(IntEnum):
+    """Cell offsets of each field within a dictionary header, from the header's start.
+
+    A header is ``[link][immediate][smudge][name-length][name...][code-field]``. The *name field*
+    (what ``LATEST`` and links point to) is the name-length cell -- ``start + NAME_LENGTH`` -- so a
+    header's link is read at ``name_field - NAME_LENGTH``. This is the single source of the layout.
+    """
+
+    LINK = 0
+    IMMEDIATE = 1
+    SMUDGE = 2
+    NAME_LENGTH = 3
+    NAME = 4
+
+
+@dataclass(frozen=True, slots=True)
+class DictionaryHeaderDto:
+    """A word's dictionary header, decoded from ``cpu.mem``."""
+
+    name: str
+    link: Address
+    immediate: bool
+    smudge: bool
+    cfa: Address
 
 
 @dataclass(frozen=True, slots=True)

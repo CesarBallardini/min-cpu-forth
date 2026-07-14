@@ -10,9 +10,9 @@ the next phase starts, informed by Brad Rodriguez's "Moving Forth" series and hi
 reference kernel.
 
 This is mostly a plan, not a record of what's built -- same posture as `docs/02-cpu-design.md`.
-The one exception: **Phase 0 (the assembler) is now implemented** (see its section below); Phases
-1+ (the ITC kernel) are not. Remaining phases get implemented one at a time, each against this
-document.
+**Phases 0-2 are now implemented** (the assembler, the ITC threading core, and the core primitive
+word set -- see their sections below); Phases 3+ are not. Remaining phases get implemented one at a
+time, each against this document.
 
 > **Naming note.** This document was written against an earlier flat layout and still refers to
 > `Emulator`/`Instruction`/`emulator.py` and `min_cpu_forth.cpu`. The code has since been
@@ -242,7 +242,18 @@ the assembler mid-flight.
   label definition, and wrong operand count/shape for an opcode. Each is a small assertion that
   the assembler fails loudly rather than emitting a subtly wrong `Instruction`.
 
-### Phase 1 -- ITC threading core over a real dictionary
+### Phase 1 -- ITC threading core over a real dictionary  ✅ built
+
+**Status:** implemented in `src/min_cpu_forth/services/kernel/`. `routines.py` holds the threading
+core (`START`, `NEXT`, `ENTER`/`DOCOL`, `EXIT`, `LIT`, plus `DUP`/`*`/`BYE`) as assembler source;
+`builder.py`'s `KernelBuilder` assembles it and lays the dictionary into `cpu.mem` via `MemoryPort`,
+returning a `KernelImageDto`; `KernelContainer` (in `containers.py`) shares one memory between the
+builder and the emulator. Two adjustments to the plan below were made in the build: the reserved
+register `NEXTREG` holds `NEXT`'s program index (set once at `START`) so every primitive ends
+`JMP NEXTREG`, and a `MOV` assembler pseudo-op (`SUB r,r; ADD r,src`) was added for `DOCOL`. The
+milestone -- `3 SQUARE -> 9` through real `NEXT`/`DOCOL`/`EXIT`, and nested `FOURTH = SQUARE SQUARE`
+balancing the return stack -- lives in `tests/unit/test_kernel.py` and
+`tests/acceptance/features/itc_kernel.feature`. The design below is what it was built to.
 
 **Builds on:** Phase 0's assembler; the memory layout and header format above.
 
@@ -260,7 +271,17 @@ real. **This is the first time `DOCOL`/`EXIT` are ever exercised end to end** --
 version, per `docs/01-first-steps.md`, executed colon definitions by iterating a Python list of
 word names instead.
 
-### Phase 2 -- Core primitive word set
+### Phase 2 -- Core primitive word set  ✅ built
+
+**Status:** implemented as the `PRIMITIVES` table in `services/kernel/routines.py` -- each word is
+a `KernelPrimitive` (a `CodeWordDto` + its routine source), so `KERNEL_SOURCE` and `CODE_WORDS` are
+both derived from one list. Delivered: stack (`DUP DROP SWAP OVER ROT -ROT NIP TUCK`), arithmetic
+(`+ - * NEGATE ABS 1+ 1-`), memory (`@ ! C@ C!`), return stack (`>R R> R@`), and comparison/logic
+(`= <> < > 0= 0< AND OR INVERT`). Two scope calls: **`/` and `MOD` are deferred** (no `DIV` opcode
+-- they need a repeated-subtraction loop and clean signed/floored division is a rabbit hole best
+taken with the already-deferred `UM/MOD`), and **`C@`/`C!` alias `@`/`!`** (the cell-addressed
+model has no sub-cell byte layer). Covered by `tests/unit/test_primitives.py` (a parametrized
+stack-effect table run through real `NEXT`). The design below is what it was built to.
 
 **Builds on:** Phase 1's CODE-word installer and header format.
 

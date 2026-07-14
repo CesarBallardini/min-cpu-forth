@@ -9,8 +9,7 @@ from pytest_bdd import given, parsers, scenarios, then, when
 # inspect.signature() at call time (PEP 649 lazy annotations, py3.14).
 from min_cpu_forth.containers import KernelContainer
 from min_cpu_forth.domain.dtos import ColonWordDto
-from min_cpu_forth.domain.register import Register
-from min_cpu_forth.services.kernel.builder import boot_thread
+from min_cpu_forth.services.kernel.builder import boot, boot_thread
 
 scenarios('../features/itc_kernel.feature')
 
@@ -39,18 +38,17 @@ def define_colon(state: KernelState, name: str, words: str) -> None:
     state.colon_words.append(ColonWordDto(name=name, words=tuple(words.split())))
 
 
-@when(parsers.parse('I boot the kernel with "{boot}"'))
-def boot_kernel(state: KernelState, boot: str) -> None:
+@when(parsers.parse('I boot the kernel with "{thread}"'))
+def boot_kernel(state: KernelState, thread: str) -> None:
     builder = state.container.kernel_builder()
     machine = state.container.machine()
     emulator = machine.emulator()
 
     image = builder.build(
         colon_words=state.colon_words,
-        boot=boot_thread(*(_thread_item(token) for token in boot.split())),
+        boot=boot_thread(*(_thread_item(token) for token in thread.split())),
     )
-    emulator.load(image.program)
-    emulator.registers.write(Register.IP, image.boot_ip)
+    boot(emulator, image)
     emulator.run()
     state.top = machine.data_stack().pop()
 

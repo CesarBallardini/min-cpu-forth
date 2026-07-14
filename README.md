@@ -22,8 +22,9 @@ out where the design and the code disagree; [`docs/02-cpu-design.md`](docs/02-cp
 is the reconciled, justified opcode catalog the `Emulator` implements;
 [`docs/03-assembler-plan.md`](docs/03-assembler-plan.md) is the phased plan -- informed by Brad
 Rodriguez's "Moving Forth" series and his CamelForth reference kernel -- for the ITC Forth
-kernel that runs on top of it; **Phase 0 (the text/label assembler) is built**, the ITC kernel
-(Phases 1+) is not. See `CLAUDE.md` for how the pieces fit together.
+kernel that runs on top of it; **Phases 0-2 (the text/label assembler, the ITC threading core, and
+the core primitive word set) are built** -- a colon definition now runs through genuine
+`NEXT`/`DOCOL`/`EXIT` -- and Phases 3+ are not. See `CLAUDE.md` for how the pieces fit together.
 
 The design in `docs/design/` originated from a conversation with ChatGPT-4, seeded with an
 excerpt from Brad Rodriguez's article
@@ -78,20 +79,21 @@ make precommit        # run all pre-commit hooks by hand
 
 ```
 src/min_cpu_forth/         # hexagon; dependency arrows point inward (enforced by .importlinter)
-  domain/                  # pure value objects: opcode.py (ISA enums), dtos.py (*Dto boundary types)
+  domain/                  # value objects: opcode/register enums, types.py (Address/ProgramIndex/Cell), *Dto
   ports.py                 # port Protocols: memory, stack, registers, char I/O, assembler stages
   services/                # use cases depending only on ports:
     emulator.py            #   EmulatorService: fetch-decode-execute over the 17-opcode ISA
     forth.py               #   ForthService: word dictionary, colon definitions (Forth semantics)
     assembler/             #   Phase 0 text assembler: parser -> resolver -> emitter -> service
+    kernel/                #   Phase 1-2 ITC core + primitive word set: routines.py + KernelBuilder
   adapters/                # concrete port implementations (memory, stack, registers, char I/O, source)
-  containers.py            # MachineContainer / AssemblerContainer: dependency-injector composition root
+  containers.py            # Machine / Assembler / Kernel containers: dependency-injector composition root
   errors.py                # MachineError exception hierarchy
-  layout.py                # cpu.mem memory-map constants (stack bases/sizes)
+  layout.py                # cpu.mem memory-map constants (system vars, dictionary, stack bases/sizes)
 docs/
   01-first-steps.md        # reviewer's walk-through of the design history
   02-cpu-design.md         # the reconciled opcode catalog
-  03-assembler-plan.md     # phased plan for an ITC Forth kernel (Phase 0 built; Phases 1+ pending)
+  03-assembler-plan.md     # phased plan for an ITC Forth kernel (Phases 0-2 built; Phases 3+ pending)
   design/                  # the design conversation: registers, memory map, instruction set
   prototypes/               # the four original assembler-interpreter-*.py scripts (frozen)
 tests/
