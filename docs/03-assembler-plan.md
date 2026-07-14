@@ -3,13 +3,25 @@
 `docs/01-first-steps.md` traced the original design conversation and found its biggest gap: no
 prototype, ever, actually threaded a real colon definition through `DOCOL`/`NEXT`, had a real
 dictionary, or could read Forth source text. `docs/02-cpu-design.md` closed the ISA half of that
-gap (a reconciled opcode catalog) and `src/min_cpu_forth/emulator.py` closed the execution half
-(a real fetch-decode-execute loop). Nothing yet *runs Forth* on top of either. This document is
-the plan for that: a phased build-out, each phase landing its own tests before the next phase
-starts, informed by Brad Rodriguez's "Moving Forth" series and his CamelForth reference kernel.
+gap (a reconciled opcode catalog) and `src/min_cpu_forth`'s `EmulatorService` closed the
+execution half (a real fetch-decode-execute loop). Nothing yet *runs Forth* on top of either.
+This document is the plan for that: a phased build-out, each phase landing its own tests before
+the next phase starts, informed by Brad Rodriguez's "Moving Forth" series and his CamelForth
+reference kernel.
 
-This is a plan, not a record of what's built -- same posture as `docs/02-cpu-design.md`. Phases
-get implemented one at a time in later work, each against this document.
+This is mostly a plan, not a record of what's built -- same posture as `docs/02-cpu-design.md`.
+The one exception: **Phase 0 (the assembler) is now implemented** (see its section below); Phases
+1+ (the ITC kernel) are not. Remaining phases get implemented one at a time, each against this
+document.
+
+> **Naming note.** This document was written against an earlier flat layout and still refers to
+> `Emulator`/`Instruction`/`emulator.py` and `min_cpu_forth.cpu`. The code has since been
+> restructured into a hexagonal (ports-and-adapters) architecture, so those map to:
+> `Emulator` → `services/emulator.py`'s `EmulatorService`; `Instruction` → `domain/dtos.py`'s
+> `InstructionDto`; the `program`/`pc` fields → `EmulatorService.load(program)` and its `pc`
+> property; `cpu.mem` and the stack bases → the `MemoryPort`/`StackPort` adapters wired by
+> `MachineContainer`, with the layout constants (`DATA_STACK_BASE`, ...) in `layout.py`. The
+> design reasoning below is unchanged; only the module/class names moved.
 
 ## Sources, and what we take from each
 
@@ -149,9 +161,16 @@ prove that the previous phase's tests didn't. File paths are named where the sha
 (e.g. Phase 0's assembler); phases past that name a likely module but the exact name gets fixed
 when that phase starts.
 
-### Phase 0 -- Minimal assembler
+### Phase 0 -- Minimal assembler  ✅ built
 
-**Builds on:** `src/min_cpu_forth/emulator.py`'s `Opcode`/`Instruction`.
+**Status:** implemented as the `src/min_cpu_forth/services/assembler/` pipeline -- `parser.py`
+(`LineParser`) → `resolver.py` (`LabelAddressResolver`) → `emitter.py` (`InstructionEmitter`),
+orchestrated by `service.py`'s `TextAssembler` and wired via `AssemblerContainer`; the static
+operand table lives in `specs.py`. Covered by `tests/unit/test_assembler.py`. The rest of this
+section is the design it was built to; where it says `Instruction` read `InstructionDto` and
+where it says a single `assembler.py` read the pipeline above (see the naming note at the top).
+
+**Builds on:** `domain/opcode.py`'s `Opcode` and `domain/dtos.py`'s `InstructionDto`.
 
 **Why it comes first, and why it's more than "remove hand-counting":** the two hand-built
 programs in `tests/unit/test_emulator.py` only run because the *test harness* reaches in and
@@ -163,7 +182,8 @@ address it needs, jump targets included, resolved from labels at assemble time r
 injected from outside. Landing that capability here is what stops Phase 1 from having to extend
 the assembler mid-flight.
 
-**What gets built:** a text-to-`Instruction` assembler in a new `src/min_cpu_forth/assembler.py`.
+**What gets built:** a text-to-`InstructionDto` assembler (delivered as the
+`services/assembler/` pipeline described under **Status** above).
 
 - *Line-oriented source.* One instruction, label definition, comment, or blank line per line. A
   label definition is `name:` (on its own line or preceding an instruction); a comment runs from

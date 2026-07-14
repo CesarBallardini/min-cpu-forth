@@ -5,10 +5,13 @@
 [![security](https://github.com/CesarBallardini/min-cpu-forth/actions/workflows/security.yml/badge.svg)](https://github.com/CesarBallardini/min-cpu-forth/actions/workflows/security.yml)
 
 A design exploration of a minimal virtual CPU instruction set purpose-built to run an
-**Indirect Threaded Code (ITC) Forth** interpreter, plus a Python implementation of that model:
-a small `CPU` (flat memory, a data stack, and a return stack), a `ForthExecutioner` (word
-dictionary, colon definitions) that models Forth *semantics* directly, and an `Emulator` -- a
-real fetch-decode-execute loop over the CPU's 17-opcode instruction set.
+**Indirect Threaded Code (ITC) Forth** interpreter, plus a Python implementation of that model
+built as a **hexagonal (ports-and-adapters) architecture** wired by `dependency-injector`: a
+`domain` of ISA enums and boundary DTOs, a set of port Protocols, `services` (`EmulatorService`
+-- a real fetch-decode-execute loop over the 17-opcode ISA; `ForthService` -- Forth *semantics*,
+stack effects and colon definitions; and a Phase 0 text assembler), and `adapters` supplying the
+concrete memory/stack/register/character-I/O behind the ports, all composed in `containers.py`.
+The hexagon's dependency rule is enforced as `import-linter` contracts.
 
 `docs/design/` has the full design conversation (registers, memory map, word layout, and the
 minimal instruction set the CPU is meant to expose); `docs/prototypes/` has the four earlier,
@@ -19,7 +22,8 @@ out where the design and the code disagree; [`docs/02-cpu-design.md`](docs/02-cp
 is the reconciled, justified opcode catalog the `Emulator` implements;
 [`docs/03-assembler-plan.md`](docs/03-assembler-plan.md) is the phased plan -- informed by Brad
 Rodriguez's "Moving Forth" series and his CamelForth reference kernel -- for the ITC Forth
-kernel that runs on top of it, not yet built. See `CLAUDE.md` for how the pieces fit together.
+kernel that runs on top of it; **Phase 0 (the text/label assembler) is built**, the ITC kernel
+(Phases 1+) is not. See `CLAUDE.md` for how the pieces fit together.
 
 The design in `docs/design/` originated from a conversation with ChatGPT-4, seeded with an
 excerpt from Brad Rodriguez's article
@@ -29,11 +33,13 @@ excerpt from Brad Rodriguez's article
 # What's in here
 
 * **[uv](https://docs.astral.sh/uv/)** for dependency and environment management.
+* **[dependency-injector](https://python-dependency-injector.ets-labs.org/)** as the composition root that wires adapters to ports (`containers.py`) -- the only runtime dependency.
+* **[import-linter](https://import-linter.readthedocs.io/)** to enforce the hexagonal dependency rule as contracts (`.importlinter`), run in `make lint`/`make architecture` and pre-commit.
 * **[ruff](https://docs.astral.sh/ruff/)** as linter and formatter (`ruff.toml`).
 * **[pyright](https://microsoft.github.io/pyright/)** + **[pyrefly](https://pyrefly.org/)** as a pair of type checkers, run on purpose, not mid-migration (`pyrightconfig.json`, `pyrefly.toml`).
 * **[bandit](https://bandit.readthedocs.io/)** (SAST) with a baseline, and **[pip-audit](https://pypi.org/project/pip-audit/)** + **[OSV-Scanner](https://google.github.io/osv-scanner/)** (SCA) against `uv.lock` for security (`bandit.yaml`). OSV-Scanner is a standalone Go binary, not a PyPI package, so it doesn't go through `uv` -- locally it just needs to be on `PATH` (`choco install osv-scanner` on Windows), in CI it runs via Google's official reusable workflow (see `security.yml`).
-* **[pytest](https://docs.pytest.org/)** with tests split by kind: `unit/`, `integration/` (placeholder), `acceptance/` (BDD via [pytest-bdd](https://pytest-bdd.readthedocs.io/)), `e2e/` (placeholder, via [pytest-playwright](https://playwright.dev/python/docs/test-runners)).
-* **[pre-commit](https://pre-commit.com/)** hooking lint, format, and lockfile checks before every commit.
+* **[pytest](https://docs.pytest.org/)** (config in `pytest.ini`) with tests split by kind: `unit/`, `integration/` (placeholder), `acceptance/` (BDD via [pytest-bdd](https://pytest-bdd.readthedocs.io/)), `e2e/` (placeholder, via [pytest-playwright](https://playwright.dev/python/docs/test-runners)).
+* **[pre-commit](https://pre-commit.com/)** hooking lint, format, architecture, security, and lockfile checks before every commit.
 * A `Makefile` as the single interface -- nobody needs to memorize the exact command for each tool.
 * Three independent GitHub Actions workflows in `.github/workflows/`, one per concern: `check.yml` (lint + format + types), `pytest.yml`, `security.yml` (bandit + pip-audit + OSV-Scanner).
 
@@ -56,7 +62,8 @@ From there, everything goes through the Makefile:
 
 ```bash
 make                  # no target: lists all available targets
-make lint             # ruff check + ruff format --check
+make lint             # ruff check + ruff format --check + import-linter contracts
+make architecture     # import-linter only (the hexagonal dependency rules)
 make format           # ruff format + ruff check --fix
 make types            # pyright + pyrefly
 make test             # pytest (unit + integration + acceptance; e2e excluded by default)
@@ -70,18 +77,25 @@ make precommit        # run all pre-commit hooks by hand
 # Structure
 
 ```
-src/min_cpu_forth/
-  cpu.py                  # Stack, CPU: flat memory, IP/W registers, data + return stacks
-  forth.py                # ForthExecutioner: word dictionary, colon definitions
-  emulator.py              # Emulator: fetch-decode-execute loop over the 17-opcode ISA
+src/min_cpu_forth/         # hexagon; dependency arrows point inward (enforced by .importlinter)
+  domain/                  # pure value objects: opcode.py (ISA enums), dtos.py (*Dto boundary types)
+  ports.py                 # port Protocols: memory, stack, registers, char I/O, assembler stages
+  services/                # use cases depending only on ports:
+    emulator.py            #   EmulatorService: fetch-decode-execute over the 17-opcode ISA
+    forth.py               #   ForthService: word dictionary, colon definitions (Forth semantics)
+    assembler/             #   Phase 0 text assembler: parser -> resolver -> emitter -> service
+  adapters/                # concrete port implementations (memory, stack, registers, char I/O, source)
+  containers.py            # MachineContainer / AssemblerContainer: dependency-injector composition root
+  errors.py                # MachineError exception hierarchy
+  layout.py                # cpu.mem memory-map constants (stack bases/sizes)
 docs/
-  01-first-steps.md       # reviewer's walk-through of the design history
+  01-first-steps.md        # reviewer's walk-through of the design history
   02-cpu-design.md         # the reconciled opcode catalog
-  03-assembler-plan.md     # phased plan for an ITC Forth kernel (not yet built)
+  03-assembler-plan.md     # phased plan for an ITC Forth kernel (Phase 0 built; Phases 1+ pending)
   design/                  # the design conversation: registers, memory map, instruction set
   prototypes/               # the four original assembler-interpreter-*.py scripts (frozen)
 tests/
-  unit/                    # no infrastructure, fast (test_cpu.py, test_forth.py, test_emulator.py)
+  unit/                    # no infrastructure, fast (test_adapters, test_forth, test_emulator, test_assembler)
   integration/             # need a real service (placeholder, not used yet)
   acceptance/
     features/               # .feature files (Gherkin) -- square.feature

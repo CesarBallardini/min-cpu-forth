@@ -5,41 +5,62 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this repository is
 
 A design exploration for a minimal virtual CPU instruction set purpose-built to run an
-**Indirect Threaded Code (ITC) Forth** interpreter, now packaged as `src/min_cpu_forth`: a
-`CPU` (flat memory, IP/W registers, data stack, return stack) and a `ForthExecutioner` (word
-dictionary, colon definitions). Tooling — `uv`, `ruff`, `pyright`+`pyrefly`, `pytest`,
-`bandit`/`pip-audit`/`OSV-Scanner`, `pre-commit` — was ported from the sibling
-`../localenv-python` scaffold; see `README.md` for the full rundown and `make help` for every
-available command.
+**Indirect Threaded Code (ITC) Forth** interpreter, packaged as `src/min_cpu_forth` and built as
+a **hexagonal (ports-and-adapters) architecture** wired by `dependency-injector`. The `domain`
+layer holds the ISA enums and the boundary DTOs; `services` (`EmulatorService`, `ForthService`,
+and the Phase 0 assembler pipeline) depend only on the port Protocols in `ports.py`; `adapters`
+supply the concrete memory/stack/register/character-I/O implementations; and `containers.py` is
+the composition root that alone binds adapters to ports. The hexagon's dependency rule is
+machine-enforced by `import-linter` (`.importlinter`). Tooling — `uv`, `ruff`,
+`pyright`+`pyrefly`, `pytest`, `bandit`/`pip-audit`/`OSV-Scanner`, `import-linter`, `pre-commit`
+— was ported from the sibling `../localenv-python` scaffold (`dependency-injector` and
+`import-linter` were added for this architecture); see `README.md` for the full rundown and
+`make help` for every available command.
 
 ## Running the code
 
 Everything goes through the `Makefile` (wraps `uv`):
 
 ```
-make install   # uv sync --all-groups --frozen; installs pre-commit hooks
-make lint      # ruff check + ruff format --check
-make format    # ruff format + ruff check --fix
-make types     # pyright + pyrefly
-make test      # pytest: unit + integration + acceptance (e2e excluded by default)
-make security  # bandit + pip-audit + osv-scanner
+make install       # uv sync --all-groups --frozen; installs pre-commit hooks
+make lint          # ruff check + ruff format --check + import-linter contracts
+make architecture  # import-linter only (the hexagonal dependency rules)
+make format        # ruff format + ruff check --fix
+make types         # pyright + pyrefly
+make test          # pytest: unit + integration + acceptance (e2e excluded by default)
+make security      # bandit + pip-audit + osv-scanner
 ```
 
-`uv run --frozen python -c "from min_cpu_forth.forth import ForthExecutioner; ..."` reproduces
-prototype demos interactively without a full script.
+Build a machine through the composition root rather than instantiating classes directly:
+`uv run --frozen python -c "from min_cpu_forth.containers import MachineContainer; f = MachineContainer().forth(); ..."`
+reproduces prototype demos interactively without a full script.
 
 ## Repository structure and how the pieces relate
 
-- **`src/min_cpu_forth/`** — the maintained, tested implementation. `cpu.py` has `Stack` and
-  `CPU`; `forth.py` has `ForthExecutioner`; `emulator.py` has `Emulator`, a real
-  fetch-decode-execute loop over `Instruction`s (`docs/02-cpu-design.md`'s 17-opcode ISA) --
-  this is where `docs/01-first-steps.md`'s "no prototype ever emulated the opcode level" gap
-  gets closed. `cpu.py`/`forth.py` model Forth *semantics* directly; `emulator.py` is the
-  separate, lower-level opcode machine those semantics were never actually run on top of.
-  `docs/03-assembler-plan.md` is the phased plan for actually running Forth on `emulator.py`
-  (a text assembler, then an ITC kernel assembled against it) -- nothing in that plan is built
-  yet. This is where new Forth words, ISA changes, or VM fixes belong. Covered by `tests/unit/`
-  and `tests/acceptance/` (pytest-bdd).
+- **`src/min_cpu_forth/`** — the maintained, tested implementation, organized as a hexagon whose
+  dependency arrows point inward (enforced by `.importlinter`). New Forth words, ISA changes, VM
+  fixes, or assembler work belong here; pick the layer by responsibility. Covered by
+  `tests/unit/` and `tests/acceptance/` (pytest-bdd).
+  - **`domain/`** — pure value objects, no dependency on any other layer: `opcode.py`
+    (`Opcode`/`InstructionField`/`OperandKind` enums) and `dtos.py` (the `*Dto` boundary types
+    `InstructionDto`/`LineDto`/`ResolvedProgramDto`/`AssemblyDto`, plus the static `OperandSpec`).
+  - **`ports.py`** — the boundary Protocols (`MemoryPort`, `StackPort`, `RegisterFilePort`,
+    `CharacterInput/OutputPort`, and the assembler-pipeline ports). Services are typed against
+    these, never against a concrete adapter.
+  - **`services/`** — the use cases, depending only on ports: `emulator.py`'s `EmulatorService`
+    (a real fetch-decode-execute loop over `InstructionDto`s -- `docs/02-cpu-design.md`'s
+    17-opcode ISA, closing `docs/01-first-steps.md`'s "no prototype ever emulated the opcode
+    level" gap), `forth.py`'s `ForthService` (Forth *semantics* -- stack effects, `DOCOL`/`EXIT`,
+    colon definitions -- not yet threaded through the opcode machine), and `assembler/` (the
+    Phase 0 parse → resolve → emit pipeline of `docs/03-assembler-plan.md`).
+  - **`adapters/`** — concrete port implementations (`ListMemoryAdapter`, `DownwardStackAdapter`,
+    `DictRegisterFileAdapter`, `QueueCharacterInputAdapter`, `BufferCharacterOutputAdapter`,
+    `StringSourceAdapter`), independent of `services/`.
+  - **`containers.py`** — `MachineContainer`/`AssemblerContainer`, the `dependency-injector`
+    composition root and the only place adapters meet ports. **`errors.py`** (the `MachineError`
+    hierarchy) and **`layout.py`** (the `cpu.mem` memory-map constants) are the shared kernel.
+  - `docs/03-assembler-plan.md` is the phased plan for running Forth on `EmulatorService`;
+    **Phase 0 (the assembler) is built**; Phases 1+ (the ITC kernel) are not yet.
 
 - **`docs/01-first-steps.md`**, **`docs/02-cpu-design.md`**, and **`docs/03-assembler-plan.md`**
   — read these, in order, before the raw design conversation below. `01` is a reviewer's
@@ -98,6 +119,12 @@ prototype demos interactively without a full script.
   threaded code rather than ordinary subroutine calls.
 - The data stack and return stack must occupy non-overlapping memory regions. The `-4.py`
   prototype started both stacks at the same base address (never caught because its demos never
-  exercised the return stack); `src/min_cpu_forth/cpu.py` fixes this by giving each stack its
-  own region (`DATA_STACK_BASE`/`RETURN_STACK_BASE`). Preserve that separation in any further
-  changes to memory layout.
+  exercised the return stack); `layout.py` fixes this by giving each stack its own region
+  (`DATA_STACK_BASE`/`RETURN_STACK_BASE`), and `MachineContainer` wires a `DownwardStackAdapter`
+  over each. Preserve that separation in any further changes to memory layout.
+- Architecture invariants (checked by `make lint` via `import-linter`): the dependency rule
+  points inward (`containers` → `services`|`adapters` → `ports` → `domain`), services depend on
+  ports and never on concrete adapters, and `domain` imports nothing from the outer layers — both
+  contracts live in `.importlinter`. Keep the code fully typed (no `Any`/`object`; `pyright`
+  **and** `pyrefly` must pass), suffix boundary data structures with `Dto`, and when you add a new
+  port, register a concrete adapter for it in a `Container` rather than instantiating it directly.
