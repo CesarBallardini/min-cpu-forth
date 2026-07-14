@@ -23,3 +23,7 @@ class AssemblerError(MachineError):
 
 class UnknownWordError(MachineError):
     """Raised when a colon definition references a word absent from the dictionary."""
+
+
+class KernelError(MachineError):
+    """Raised when the ITC kernel cannot be assembled or laid out (bad routine ordering, ...)."""

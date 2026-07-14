@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from min_cpu_forth.domain.opcode import InstructionField, Opcode, OperandKind
+    from min_cpu_forth.domain.types import Address, Cell, ProgramIndex
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,7 +64,7 @@ class ResolvedProgramDto:
     """Parsed lines with their addresses assigned, plus the resolved label -> index table."""
 
     lines: tuple[LineDto, ...]
-    labels: Mapping[str, int]
+    labels: Mapping[str, ProgramIndex]
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,4 +72,57 @@ class AssemblyDto:
     """The assembler's output: a runnable instruction stream plus its label symbol table."""
 
     program: tuple[InstructionDto, ...]
-    labels: Mapping[str, int]
+    labels: Mapping[str, ProgramIndex]
+
+
+@dataclass(frozen=True, slots=True)
+class CodeWordDto:
+    """A primitive word whose native routine is a label in the assembled kernel program."""
+
+    name: str
+    routine_label: str
+    immediate: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ColonWordDto:
+    """A colon word: the ordered names of the words its thread invokes (``EXIT`` appended)."""
+
+    name: str
+    words: tuple[str, ...]
+    immediate: bool = False
+
+
+type WordSpecDto = CodeWordDto | ColonWordDto
+
+
+@dataclass(frozen=True, slots=True)
+class WordReferenceDto:
+    """A thread item that invokes a word by its CFA."""
+
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class LiteralCellDto:
+    """A thread item that is an inline literal cell (pushed at runtime by a preceding ``LIT``)."""
+
+    value: Cell
+
+
+type ThreadItemDto = WordReferenceDto | LiteralCellDto
+
+
+@dataclass(frozen=True, slots=True)
+class KernelImageDto:
+    """An assembled kernel plus the dictionary metadata a caller needs to boot it.
+
+    ``program`` is loaded into the emulator; ``word_cfas`` maps each installed word's name to its
+    Code Field Address (the ``cpu.mem`` cell holding its code-field value); ``boot_ip`` is the
+    ``cpu.mem`` address of the boot thread's first cell, which the caller writes into ``IP`` before
+    running from the kernel's ``START`` routine.
+    """
+
+    program: tuple[InstructionDto, ...]
+    word_cfas: Mapping[str, Address]
+    boot_ip: Address

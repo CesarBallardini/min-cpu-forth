@@ -37,6 +37,9 @@ OPERAND_SPECS: dict[Opcode, tuple[OperandSpec, ...]] = {
 # Mnemonic text -> Opcode, for the emitter's lookup.
 MNEMONICS: dict[str, Opcode] = {opcode.value: opcode for opcode in Opcode}
 
-# The `SET r, <const>` pseudo-op expands to two real instructions (`SUB r, r` then `ADD r, n`).
+# Assemble-time pseudo-ops, each expanding to two real instructions (never a new opcode):
+#   SET r, <const>  ->  SUB r, r ;  ADD r, <const>   (materialise a constant / label address)
+#   MOV dst, src    ->  SUB dst, dst ;  ADD dst, src  (copy a register)
 SET_MNEMONIC = 'SET'
-SET_SIZE = 2
+MOV_MNEMONIC = 'MOV'
+PSEUDO_OP_SIZES: dict[str, int] = {SET_MNEMONIC: 2, MOV_MNEMONIC: 2}

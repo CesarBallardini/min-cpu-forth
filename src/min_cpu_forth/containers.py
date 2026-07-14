@@ -28,6 +28,7 @@ from min_cpu_forth.services.assembler.resolver import LabelAddressResolver
 from min_cpu_forth.services.assembler.service import TextAssembler
 from min_cpu_forth.services.emulator import EmulatorService
 from min_cpu_forth.services.forth import ForthService
+from min_cpu_forth.services.kernel.builder import KernelBuilder
 
 
 class MachineContainer(containers.DeclarativeContainer):
@@ -68,3 +69,21 @@ class AssemblerContainer(containers.DeclarativeContainer):
     resolver = providers.Factory(LabelAddressResolver)
     emitter = providers.Factory(InstructionEmitter)
     assembler = providers.Factory(TextAssembler, parser=parser, resolver=resolver, emitter=emitter)
+
+
+class KernelContainer(containers.DeclarativeContainer):
+    """Composes a machine and an assembler so the kernel builder shares the machine's memory.
+
+    ``machine`` is a nested `MachineContainer`: the emulator built from it and the kernel builder
+    below both resolve the *same* memory singleton, so the dictionary the builder writes is the
+    one the emulator runs against.
+    """
+
+    machine = providers.Container(MachineContainer)
+    assembler_stages = providers.Container(AssemblerContainer)
+
+    kernel_builder = providers.Factory(
+        KernelBuilder,
+        assembler=assembler_stages.assembler,
+        memory=machine.memory,
+    )

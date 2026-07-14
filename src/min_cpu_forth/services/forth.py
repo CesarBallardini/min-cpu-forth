@@ -9,6 +9,8 @@ only through injected ports -- never a concrete adapter.
 
 from typing import TYPE_CHECKING
 
+from min_cpu_forth.domain.register import Register
+from min_cpu_forth.domain.types import Address, Cell
 from min_cpu_forth.errors import UnknownWordError
 
 if TYPE_CHECKING:
@@ -18,8 +20,6 @@ if TYPE_CHECKING:
 
 type BinaryOp = Callable[[int, int], int]
 type Word = Callable[..., None]
-
-_IP = 'ip'
 
 
 def _noop() -> None:
@@ -88,7 +88,7 @@ class ForthService:
         self.dictionary['1-'] = lambda: self._data_stack.push(self._data_stack.pop() - 1)
 
         # --- Memory ops ---
-        self.dictionary['@'] = lambda: self._data_stack.push(self._memory.read(self._data_stack.pop()))
+        self.dictionary['@'] = lambda: self._data_stack.push(self._memory.read(Address(self._data_stack.pop())))
         self.dictionary['!'] = self._store
 
         # --- Return stack ---
@@ -178,16 +178,16 @@ class ForthService:
         """``( x addr -- )``: store ``x`` at ``addr`` (address on top of the stack)."""
         addr = self._data_stack.pop()
         value = self._data_stack.pop()
-        self._memory.write(addr, value)
+        self._memory.write(Address(addr), Cell(value))
 
     def _docol(self, addr: int) -> None:
         """Enter the colon definition at ``addr``: save ``IP``, then jump into it."""
-        self._return_stack.push(self._registers.read(_IP))
-        self._registers.write(_IP, addr)
+        self._return_stack.push(self._registers.read(Register.IP))
+        self._registers.write(Register.IP, addr)
 
     def _exit(self) -> None:
         """Return from a colon definition: restore ``IP`` from the return stack."""
-        self._registers.write(_IP, self._return_stack.pop())
+        self._registers.write(Register.IP, self._return_stack.pop())
 
     def _bye(self) -> None:
         """Stop the interpreter."""

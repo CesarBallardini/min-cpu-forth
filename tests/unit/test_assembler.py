@@ -167,3 +167,74 @@ def test_wrong_operand_count_raises(assembler: AssemblerPort) -> None:
 def test_register_slot_rejects_an_integer(assembler: AssemblerPort) -> None:
     with pytest.raises(AssemblerError, match='expected a register name'):
         assembler.assemble('PUSH_D 5')
+
+
+@pytest.mark.unit
+def test_mov_expands_to_sub_self_then_add_of_the_source_register(assembler: AssemblerPort) -> None:
+    """``MOV dst, src`` is sugar for ``SUB dst, dst`` then ``ADD dst, src`` -- not a new opcode."""
+    program = assembler.assemble('MOV IP, W').program
+
+    assert list(program) == [
+        InstructionDto(Opcode.SUB, a='IP', b='IP'),
+        InstructionDto(Opcode.ADD, a='IP', b='W'),
+    ]
+
+
+@pytest.mark.unit
+def test_mov_source_must_be_a_register(assembler: AssemblerPort) -> None:
+    with pytest.raises(AssemblerError, match='expected a register name'):
+        assembler.assemble('MOV IP, 5')
+
+
+@pytest.mark.unit
+def test_mov_labels_resolve_around_its_two_cell_expansion(assembler: AssemblerPort) -> None:
+    """A MOV occupies two cells, so labels after it must account for the expansion."""
+    source = """
+            MOV X, Y       ; indices 0-1
+        HERE:
+            HALT           ; index 2
+    """
+    assert assembler.assemble(source).labels['HERE'] == 2  # noqa: PLR2004 -- MOV is two cells
+
+
+@pytest.mark.unit
+def test_label_whose_name_starts_with_a_mnemonic_is_not_misparsed(assembler: AssemblerPort) -> None:
+    """Regression: a label like ``ADDR:`` must not be read as the ``ADD`` opcode."""
+    program = assembler.assemble('ADDR: ADD X, 1').program
+
+    assert program == (InstructionDto(Opcode.ADD, a='X', b=1),)
+    assert assembler.assemble('ADDR: ADD X, 1').labels['ADDR'] == 0
+
+
+@pytest.mark.unit
+def test_label_used_as_an_immediate_in_add_resolves_to_its_absolute_index(
+    assembler: AssemblerPort,
+) -> None:
+    """A bare label in an ``ADD`` immediate slot resolves to its absolute program index."""
+    source = """
+            SUB R, R
+            ADD R, TARGET   ; index 1, TARGET is index 2
+        TARGET:
+            HALT
+    """
+    program = assembler.assemble(source).program
+
+    assert program[1] == InstructionDto(Opcode.ADD, a='R', b=2)
+
+
+@pytest.mark.unit
+def test_mov_copies_a_register_when_run(
+    assembler: AssemblerPort, emulator: EmulatorService, data_stack: StackPort
+) -> None:
+    """``MOV`` behaviourally copies a register: SET X, then MOV Y, X, then push Y."""
+    source = """
+            SET    X, 5
+            MOV    Y, X
+            PUSH_D Y
+            HALT
+    """
+    emulator.load(assembler.assemble(source).program)
+
+    emulator.run()
+
+    assert data_stack.pop() == 5  # noqa: PLR2004 -- the value moved from X to Y

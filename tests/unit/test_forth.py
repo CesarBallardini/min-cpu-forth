@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from min_cpu_forth.domain.register import Register
 from min_cpu_forth.errors import UnknownWordError
 
 if TYPE_CHECKING:
@@ -66,13 +67,13 @@ def test_store_and_fetch(forth: ForthService, data_stack: StackPort) -> None:
 def test_docol_and_exit_round_trip_through_return_stack(
     forth: ForthService, forth_registers: RegisterFilePort
 ) -> None:
-    forth_registers.write('ip', 42)
+    forth_registers.write(Register.IP, 42)
 
     forth.dictionary['DOCOL'](7)
-    assert forth_registers.read('ip') == 7
+    assert forth_registers.read(Register.IP) == 7
 
     forth.dictionary['EXIT']()
-    assert forth_registers.read('ip') == 42
+    assert forth_registers.read(Register.IP) == 42
 
 
 @pytest.mark.unit

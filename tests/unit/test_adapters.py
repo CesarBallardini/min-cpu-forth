@@ -11,6 +11,7 @@ from min_cpu_forth.adapters.io import (
 from min_cpu_forth.adapters.memory import ListMemoryAdapter
 from min_cpu_forth.adapters.registers import DictRegisterFileAdapter
 from min_cpu_forth.adapters.stack import DownwardStackAdapter
+from min_cpu_forth.domain.types import Address, Cell
 from min_cpu_forth.errors import InputExhaustedError, StackError
 
 if TYPE_CHECKING:
@@ -21,9 +22,9 @@ if TYPE_CHECKING:
 def test_memory_reads_back_what_it_writes() -> None:
     memory = ListMemoryAdapter(size=16)
 
-    memory.write(5, 99)
+    memory.write(Address(5), Cell(99))
 
-    assert memory.read(5) == 99
+    assert memory.read(Address(5)) == 99
     assert memory.size == 16
 
 
@@ -40,7 +41,7 @@ def test_registers_default_to_zero_then_hold_writes() -> None:
 
 @pytest.mark.unit
 def test_stack_push_pop_round_trips() -> None:
-    stack = DownwardStackAdapter(ListMemoryAdapter(size=8), base=8, size=4)
+    stack = DownwardStackAdapter(ListMemoryAdapter(size=8), base=Address(8), size=4)
 
     stack.push(42)
 
@@ -50,7 +51,7 @@ def test_stack_push_pop_round_trips() -> None:
 
 @pytest.mark.unit
 def test_stack_pop_underflow_raises() -> None:
-    stack = DownwardStackAdapter(ListMemoryAdapter(size=8), base=8, size=4)
+    stack = DownwardStackAdapter(ListMemoryAdapter(size=8), base=Address(8), size=4)
 
     with pytest.raises(StackError):
         stack.pop()
@@ -58,7 +59,7 @@ def test_stack_pop_underflow_raises() -> None:
 
 @pytest.mark.unit
 def test_stack_push_overflow_raises() -> None:
-    stack = DownwardStackAdapter(ListMemoryAdapter(size=8), base=8, size=2)
+    stack = DownwardStackAdapter(ListMemoryAdapter(size=8), base=Address(8), size=2)
 
     stack.push(1)
     stack.push(2)
@@ -83,7 +84,7 @@ def test_stacks_share_the_same_backing_memory(memory: MemoryPort, data_stack: St
     data_stack.push(77)
 
     # The pushed value lands one cell below the (empty) base, in the shared memory.
-    assert memory.read(data_stack.base - 1) == 77
+    assert memory.read(Address(data_stack.base - 1)) == 77
 
 
 @pytest.mark.unit

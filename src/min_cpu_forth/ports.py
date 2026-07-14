@@ -14,17 +14,18 @@ if TYPE_CHECKING:
         LineDto,
         ResolvedProgramDto,
     )
+    from min_cpu_forth.domain.types import Address, Cell
 
 
 @runtime_checkable
 class MemoryPort(Protocol):
     """Random-access cell storage shared by the stacks, ``LOAD``/``STORE``, and the dictionary."""
 
-    def read(self, address: int) -> int:
+    def read(self, address: Address) -> Cell:
         """Return the cell at ``address``."""
         ...
 
-    def write(self, address: int, value: int) -> None:
+    def write(self, address: Address, value: Cell) -> None:
         """Store ``value`` into the cell at ``address``."""
         ...
 
@@ -51,12 +52,12 @@ class StackPort(Protocol):
         ...
 
     @property
-    def pointer(self) -> int:
+    def pointer(self) -> Address:
         """The current stack-pointer address (equal to ``base`` when empty)."""
         ...
 
     @property
-    def base(self) -> int:
+    def base(self) -> Address:
         """The empty-stack pointer address; the stack grows toward lower addresses."""
         ...
 

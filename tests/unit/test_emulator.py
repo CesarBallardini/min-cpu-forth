@@ -6,7 +6,8 @@ import pytest
 
 from min_cpu_forth.domain.dtos import InstructionDto
 from min_cpu_forth.domain.opcode import Opcode
-from min_cpu_forth.errors import EmulatorError, InputExhaustedError
+from min_cpu_forth.domain.types import Address, Cell
+from min_cpu_forth.errors import EmulatorError, InputExhaustedError, StackError
 
 if TYPE_CHECKING:
     from min_cpu_forth.adapters.io import (
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
 def test_load_reads_memory_through_a_register(
     emulator: EmulatorService, memory: MemoryPort, registers: RegisterFilePort
 ) -> None:
-    memory.write(100, 42)
+    memory.write(Address(100), Cell(42))
     registers.write('ADDR', 100)
     emulator.load([InstructionDto(Opcode.LOAD, a='X', b='ADDR')])
 
@@ -40,7 +41,7 @@ def test_store_writes_memory_through_a_register(
 
     emulator.step()
 
-    assert memory.read(100) == 42
+    assert memory.read(Address(100)) == 42
 
 
 @pytest.mark.unit
@@ -260,3 +261,33 @@ def test_run_raises_when_max_steps_exceeded(emulator: EmulatorService, registers
 
     with pytest.raises(EmulatorError):
         emulator.run(max_steps=10)
+
+
+@pytest.mark.unit
+def test_in_out_echo_through_the_run_loop(
+    emulator: EmulatorService,
+    char_input: QueueCharacterInputAdapter,
+    char_output: BufferCharacterOutputAdapter,
+) -> None:
+    """A whole program reads a character and writes it back -- the KEY/EMIT shape (Phase 4)."""
+    char_input.feed([ord('Z')])
+    emulator.load(
+        [
+            InstructionDto(Opcode.IN, a='X'),
+            InstructionDto(Opcode.OUT, a='X'),
+            InstructionDto(Opcode.HALT),
+        ]
+    )
+
+    emulator.run()
+
+    assert list(char_output.buffer) == [ord('Z')]
+
+
+@pytest.mark.unit
+def test_stack_underflow_surfaces_during_a_run(emulator: EmulatorService) -> None:
+    """A ``POP_D`` on an empty data stack raises ``StackError`` mid-run, not a silent bad value."""
+    emulator.load([InstructionDto(Opcode.POP_D, a='X'), InstructionDto(Opcode.HALT)])
+
+    with pytest.raises(StackError):
+        emulator.run()

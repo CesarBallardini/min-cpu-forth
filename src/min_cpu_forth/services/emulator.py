@@ -20,6 +20,7 @@ never a concrete adapter. Per-opcode operand meaning (mirrors ``docs/02-cpu-desi
 from typing import TYPE_CHECKING
 
 from min_cpu_forth.domain.opcode import Opcode
+from min_cpu_forth.domain.types import Address, Cell
 from min_cpu_forth.errors import EmulatorError
 
 if TYPE_CHECKING:
@@ -140,13 +141,13 @@ class EmulatorService:
         """``a := mem[b]`` (``b`` is a register holding the address)."""
         dst = self._require_register(instr.a)
         addr_reg = self._require_register(instr.b)
-        self._registers.write(dst, self._memory.read(self._registers.read(addr_reg)))
+        self._registers.write(dst, self._memory.read(Address(self._registers.read(addr_reg))))
 
     def _exec_store(self, instr: InstructionDto) -> None:
         """``mem[a] := b`` (``a`` holds the address, ``b`` the value)."""
         addr_reg = self._require_register(instr.a)
         value_reg = self._require_register(instr.b)
-        self._memory.write(self._registers.read(addr_reg), self._registers.read(value_reg))
+        self._memory.write(Address(self._registers.read(addr_reg)), Cell(self._registers.read(value_reg)))
 
     def _exec_add(self, instr: InstructionDto) -> None:
         """``a := a + b``."""

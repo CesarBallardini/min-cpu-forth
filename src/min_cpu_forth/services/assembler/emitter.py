@@ -6,14 +6,20 @@ from min_cpu_forth.domain.dtos import InstructionDto
 from min_cpu_forth.domain.opcode import InstructionField, Opcode, OperandKind
 from min_cpu_forth.errors import AssemblerError
 from min_cpu_forth.ports import InstructionEmitterPort
-from min_cpu_forth.services.assembler.specs import MNEMONICS, OPERAND_SPECS, SET_MNEMONIC
+from min_cpu_forth.services.assembler.specs import (
+    MNEMONICS,
+    MOV_MNEMONIC,
+    OPERAND_SPECS,
+    SET_MNEMONIC,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from min_cpu_forth.domain.dtos import LineDto, ResolvedProgramDto
+    from min_cpu_forth.domain.types import ProgramIndex
 
-_SET_OPERAND_COUNT = 2
+_PSEUDO_OPERAND_COUNT = 2
 
 
 class InstructionEmitter(InstructionEmitterPort):
@@ -26,13 +32,15 @@ class InstructionEmitter(InstructionEmitterPort):
             program.extend(self._emit_line(line, resolved.labels))
         return tuple(program)
 
-    def _emit_line(self, line: LineDto, labels: Mapping[str, int]) -> list[InstructionDto]:
+    def _emit_line(self, line: LineDto, labels: Mapping[str, ProgramIndex]) -> list[InstructionDto]:
         """Emit the zero, one, or two instructions a single source line contributes."""
         mnemonic = line.mnemonic
         if mnemonic is None:
             return []  # a labels-only or blank line
         if mnemonic == SET_MNEMONIC:
             return self._emit_set(line, labels)
+        if mnemonic == MOV_MNEMONIC:
+            return self._emit_mov(line)
         opcode = MNEMONICS.get(mnemonic)
         if opcode is None:
             raise AssemblerError(f'line {line.lineno}: unknown mnemonic {mnemonic!r}')
@@ -60,9 +68,9 @@ class InstructionEmitter(InstructionEmitterPort):
                     offset = self._resolve_offset(token, labels, line)
         return [InstructionDto(opcode, a=a, b=b, offset=offset)]
 
-    def _emit_set(self, line: LineDto, labels: Mapping[str, int]) -> list[InstructionDto]:
+    def _emit_set(self, line: LineDto, labels: Mapping[str, ProgramIndex]) -> list[InstructionDto]:
         """Expand ``SET r, <const>`` into ``SUB r, r`` then ``ADD r, <resolved-int>``."""
-        if len(line.operands) != _SET_OPERAND_COUNT:
+        if len(line.operands) != _PSEUDO_OPERAND_COUNT:
             raise AssemblerError(
                 f'line {line.lineno}: SET expects 2 operands (register, constant), got {len(line.operands)}'
             )
@@ -73,6 +81,19 @@ class InstructionEmitter(InstructionEmitterPort):
             InstructionDto(Opcode.ADD, a=register, b=value),
         ]
 
+    def _emit_mov(self, line: LineDto) -> list[InstructionDto]:
+        """Expand ``MOV dst, src`` into ``SUB dst, dst`` then ``ADD dst, src`` (both registers)."""
+        if len(line.operands) != _PSEUDO_OPERAND_COUNT:
+            raise AssemblerError(
+                f'line {line.lineno}: MOV expects 2 operands (dest, source), got {len(line.operands)}'
+            )
+        dest = self._resolve_register(line.operands[0], line)
+        source = self._resolve_register(line.operands[1], line)
+        return [
+            InstructionDto(Opcode.SUB, a=dest, b=dest),
+            InstructionDto(Opcode.ADD, a=dest, b=source),
+        ]
+
     @staticmethod
     def _resolve_register(token: str, line: LineDto) -> str:
         """Require ``token`` to be a register name (an identifier, never an integer)."""
@@ -81,7 +102,7 @@ class InstructionEmitter(InstructionEmitterPort):
         return token
 
     @staticmethod
-    def _resolve_reg_or_immediate(token: str, labels: Mapping[str, int], line: LineDto) -> str | int:
+    def _resolve_reg_or_immediate(token: str, labels: Mapping[str, ProgramIndex], line: LineDto) -> str | int:
         """Resolve an ``ADD``/``SUB``/``AND``/``OR`` ``b``: integer/label -> immediate, else register."""
         literal = _try_int(token)
         if literal is not None:
@@ -91,7 +112,7 @@ class InstructionEmitter(InstructionEmitterPort):
         return InstructionEmitter._resolve_register(token, line)
 
     @staticmethod
-    def _resolve_offset(token: str, labels: Mapping[str, int], line: LineDto) -> int:
+    def _resolve_offset(token: str, labels: Mapping[str, ProgramIndex], line: LineDto) -> int:
         """Resolve a ``JZ``/``JS`` offset: integer literal, or label -> signed relative offset."""
         literal = _try_int(token)
         if literal is not None:
@@ -101,7 +122,7 @@ class InstructionEmitter(InstructionEmitterPort):
         raise AssemblerError(f'line {line.lineno}: undefined label {token!r} in branch offset')
 
     @staticmethod
-    def _resolve_constant(token: str, labels: Mapping[str, int], line: LineDto) -> int:
+    def _resolve_constant(token: str, labels: Mapping[str, ProgramIndex], line: LineDto) -> int:
         """Require ``token`` to resolve to an int: an integer literal or a label's address."""
         literal = _try_int(token)
         if literal is not None:

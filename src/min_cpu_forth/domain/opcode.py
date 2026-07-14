@@ -5,10 +5,10 @@
 populates and how its token is resolved -- see ``domain.dtos.OperandSpec``.
 """
 
-from enum import Enum
+from enum import Enum, StrEnum
 
 
-class Opcode(Enum):
+class Opcode(StrEnum):
     """The 17 opcodes of the ``docs/02-cpu-design.md`` ISA."""
 
     LOAD = 'LOAD'
