@@ -12,7 +12,16 @@ that installs the Forth word dictionary and supports colon definitions.
 `docs/design/` has the full design conversation (registers, memory map, word layout, and the
 minimal instruction set the CPU is meant to expose); `docs/prototypes/` has the four earlier,
 throwaway Python scripts this package was consolidated from -- kept as historical reference,
-not maintained further. See `CLAUDE.md` for how the pieces fit together.
+not maintained further. Read [`docs/01-first-steps.md`](docs/01-first-steps.md) first: it walks
+through that history in order and calls out where the design and the code disagree.
+[`docs/02-cpu-design.md`](docs/02-cpu-design.md) picks up from there with a reconciled,
+justified opcode catalog for a CPU that can actually run the minimal Forth word list. See
+`CLAUDE.md` for how the pieces fit together.
+
+The design in `docs/design/` originated from a conversation with ChatGPT-4, seeded with an
+excerpt from Brad Rodriguez's article
+["Moving Forth: Part 1 -- The Threading Technique"](https://www.bradrodriguez.com/papers/moving1.htm)
+(`docs/design/prompt-1.md`), which explains classical Indirect Threaded Code (ITC).
 
 # What's in here
 

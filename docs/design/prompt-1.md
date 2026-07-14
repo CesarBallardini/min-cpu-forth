@@ -4,6 +4,9 @@ the purpose of that CPU is to run a forth  indirect threaded interpreter.
 
 Th basis for the interpreter is the following article, I cite the interesting part of it.  So please define the registers, memory map, and CPU instructions that are needed :
 
+Source: Brad Rodriguez, "Moving Forth: Part 1 -- The Threading Technique",
+<https://www.bradrodriguez.com/papers/moving1.htm>.
+
 the article follows:
 
 THE THREADING TECHNIQUE
