@@ -57,9 +57,12 @@ get implemented one at a time in later work, each against this document.
 
 ## Decisions locked in
 
-1. **Build a minimal text/label assembler first** (Phase 0). Hand-computing offsets for dozens of
-   words, the way `tests/unit/test_emulator.py`'s `*`-via-repeated-addition test currently does,
-   doesn't scale to a real kernel.
+1. **Build a minimal text/label assembler first** (Phase 0). Hand-computing branch offsets -- and
+   hand-poking jump-target registers, the way `tests/unit/test_emulator.py`'s
+   `*`-via-repeated-addition test currently does -- doesn't scale to a real kernel; the assembler
+   must resolve labels into *both* signed branch offsets and absolute jump targets so a program is
+   self-contained in its own text (see Phase 0 for the `SET` pseudo-op that makes `JMP <label>`
+   work without adding an opcode).
 2. **Curated core word list**: stack/arithmetic/memory/logic/control primitives (from
    `docs/02-cpu-design.md`), the outer interpreter (`WORD`/`FIND`/`NUMBER`/`INTERPRET`/`QUIT`),
    the colon compiler, control structures (`IF/THEN`, `BEGIN/UNTIL`, `DO/LOOP`), and
@@ -150,17 +153,74 @@ when that phase starts.
 
 **Builds on:** `src/min_cpu_forth/emulator.py`'s `Opcode`/`Instruction`.
 
-**What gets built:** a text-to-`Instruction` assembler in a new `src/min_cpu_forth/assembler.py`:
-mnemonics for all 17 opcodes, named labels resolved to relative offsets (`JZ`/`JS`) or register
-targets (`JMP` still needs its target loaded into a register first, same as today -- the
-assembler doesn't change the ISA, just removes hand-counting), comments, and register/immediate
-operand parsing.
+**Why it comes first, and why it's more than "remove hand-counting":** the two hand-built
+programs in `tests/unit/test_emulator.py` only run because the *test harness* reaches in and
+pokes the one address a `JMP` needs (`emulator.registers['LOOP_ADDR'] = 3` in the `*` test). A
+real kernel has no harness. Phase 1's every primitive ends with a jump to `NEXT`, and `NEXT`
+lives at some fixed `program` index the primitive itself must get into a register before it can
+`JMP` there. So Phase 0's real job is to make a program *self-contained in its own text* -- every
+address it needs, jump targets included, resolved from labels at assemble time rather than
+injected from outside. Landing that capability here is what stops Phase 1 from having to extend
+the assembler mid-flight.
 
-**Tests** (`tests/unit/test_assembler.py`): assemble the existing hand-built `DUP` and
-`*`-via-repeated-addition programs from `tests/unit/test_emulator.py` from their text-mnemonic
-form and assert the result is either identical to the hand-built `Instruction` list or produces
-identical `Emulator` behavior when run. This proves the assembler is a safe drop-in before
-anything else depends on it.
+**What gets built:** a text-to-`Instruction` assembler in a new `src/min_cpu_forth/assembler.py`.
+
+- *Line-oriented source.* One instruction, label definition, comment, or blank line per line. A
+  label definition is `name:` (on its own line or preceding an instruction); a comment runs from
+  `;` to end of line. Opcode mnemonics are the 17 `Opcode` names verbatim (uppercase); register
+  names are case-sensitive identifiers -- exactly the arbitrary string keys `Emulator.registers`
+  already uses.
+
+- *Operand shapes come straight from the emulator's per-opcode table* (the docstring table in
+  `emulator.py`): the assembler encodes that table as its single source of truth for which field
+  (`a`, `b`, `offset`) each operand lands in, and whether `b` is a register or an immediate. A
+  bare integer literal is an immediate (`int`); a bare identifier is a register (`str`) -- the
+  same `str`-vs-`int` distinction `_resolve` keys on at runtime.
+
+- *A label resolves differently by position -- the one sharp edge to document loudly:*
+  - In a `JZ`/`JS` **offset** slot it resolves to a **signed relative offset**,
+    `target_index - (branch_index + 1)`, because `step()` advances `PC` past the branch *before*
+    the handler adds the offset (the `*` test's `JZ ... offset=3` at index 3 landing at index 7
+    is exactly `7 - (3 + 1)`). Backward branches therefore assemble to *negative* offsets; the
+    assembler must handle both directions, even though the current hand-built `*` sidesteps
+    backward branching by using a register `JMP`.
+  - In an `ADD`/`SUB`/`AND`/`OR`/`SET` **immediate** slot it resolves to its **absolute
+    `program` index**.
+  The same token means a relative distance in one place and an absolute address in another; the
+  assembler picks by operand position, and the tests should assert this so nobody reads a label
+  as "an address" uniformly.
+
+- *`JMP`-to-a-label, without a new opcode.* The ISA has no load-immediate, so the only way to get
+  a label's absolute address into a register is `SUB r, r` (zero it) then `ADD r, <label>` -- then
+  `JMP r`. The assembler offers this as one convenience pseudo-instruction, `SET r, <label-or-int>`,
+  that expands to exactly those two real `Instruction`s. `SET` is assemble-time sugar, **not** a
+  new opcode -- it emits only ops already in the canonical set, so the ISA invariant in `CLAUDE.md`
+  holds. With it, a self-contained backward loop is `SET R, LOOP` / `JMP R`, and a forward
+  primitive tail is `SET R, NEXT` / `JMP R`.
+
+- *Output.* `assemble(source)` returns both the `list[Instruction]` (a drop-in for
+  `Emulator(cpu, program)`) and the resolved label-to-index symbol table -- Phase 1's CODE-word
+  installer needs a routine's entry index to write into its Code Field, so the symbol table is a
+  first-class return value, not a debugging afterthought. Multiple labeled routines assemble into
+  one program with cross-references resolved across the whole unit (so `DUP` can name `NEXT` even
+  though `NEXT` is defined elsewhere in the same source). This whole-program resolution -- not the
+  two-program regression below -- is the capability Phase 1 actually depends on.
+
+**Tests** (`tests/unit/test_assembler.py`):
+- *`DUP` round-trips structurally.* It has no jumps, so its assembled `list[Instruction]` must
+  compare **equal** (frozen-dataclass `==`) to the hand-built list in `test_emulator.py` -- the
+  strongest possible "safe drop-in" proof.
+- *`*` proves label-to-`JMP` materialization behaviorally.* Rewritten to resolve its backward
+  branch from a label (`SET LOOP_ADDR, LOOP` / `JMP LOOP_ADDR`) instead of a harness-poked
+  register, its assembled list is deliberately *not* identical to the hand-built one (it now
+  carries the `SUB`/`ADD` expansion), so this case asserts **behavioral** equivalence: assemble,
+  `run()`, and check the data stack yields `42` with no external register poking. The two cases
+  together cover both assertion modes and both label roles (relative offset vs absolute address).
+- *A signed backward `JZ`/`JS` offset* assembles to the correct negative number -- the direction
+  the hand-built programs never exercise.
+- *Error cases raise clearly:* unknown mnemonic, reference to an undefined label, a duplicate
+  label definition, and wrong operand count/shape for an opcode. Each is a small assertion that
+  the assembler fails loudly rather than emitting a subtly wrong `Instruction`.
 
 ### Phase 1 -- ITC threading core over a real dictionary
 

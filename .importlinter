@@ -1,0 +1,32 @@
+# Import Linter -- machine-checkable hexagonal dependency rules.
+# See docs/03-assembler-plan.md and CLAUDE.md for the layering these encode.
+# Run via `make architecture` (or `make lint`); also a pre-commit hook.
+
+[importlinter]
+root_package = min_cpu_forth
+
+# The hexagon's dependency rule: every arrow points inward. Higher layers may import lower ones,
+# never the reverse. `services` and `adapters` sit on the same level and are declared independent,
+# so a service can never import a concrete adapter -- it depends only on the ports between them.
+# `containers` is the composition root that alone binds adapters to ports.
+[importlinter:contract:hexagonal-layers]
+name = Hexagonal layers point inward
+type = layers
+layers =
+    min_cpu_forth.containers
+    min_cpu_forth.services | min_cpu_forth.adapters
+    min_cpu_forth.ports
+    min_cpu_forth.domain
+
+# Belt-and-braces guard for the innermost layer: the domain must stay pure, importing nothing
+# from the outer layers even if the layered contract above were ever loosened.
+[importlinter:contract:domain-independent]
+name = Domain depends on no other layer
+type = forbidden
+source_modules =
+    min_cpu_forth.domain
+forbidden_modules =
+    min_cpu_forth.ports
+    min_cpu_forth.adapters
+    min_cpu_forth.services
+    min_cpu_forth.containers

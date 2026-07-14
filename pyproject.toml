@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "A minimal virtual CPU instruction set and inner interpreter for an Indirect Threaded Code (ITC) Forth."
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "dependency-injector>=4.49.1",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -28,15 +30,10 @@ dev = [
     "bandit[toml]",
     "pip-audit",
     "pre-commit",
+    "import-linter>=2.13",
 ]
 
-[tool.pytest.ini_options]
-addopts = "-ra --strict-markers -m 'not e2e and not snapshot'"
-testpaths = ["tests"]
-markers = [
-    "unit: fast tests with no external dependencies",
-    "integration: tests that need a real database or service",
-    "bdd: behavior-driven acceptance tests (pytest-bdd, Gherkin)",
-    "e2e: end-to-end tests against a running instance (Playwright)",
-    "snapshot: snapshot tests, excluded by default, run on demand",
-]
+# Tool configuration lives in dedicated files, matching the rest of this project
+# (ruff.toml, pyrightconfig.json, pyrefly.toml, bandit.yaml):
+#   - pytest       -> pytest.ini
+#   - import-linter -> .importlinter

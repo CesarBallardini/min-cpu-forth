@@ -40,3 +40,9 @@ repos:
         entry: uv run --frozen bandit -c bandit.yaml -r src
         language: system
         pass_filenames: false
+
+      - id: import-linter
+        name: import-linter (hexagonal architecture)
+        entry: uv run --frozen lint-imports
+        language: system
+        pass_filenames: false
