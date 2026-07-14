@@ -5,18 +5,21 @@
 [![security](https://github.com/CesarBallardini/min-cpu-forth/actions/workflows/security.yml/badge.svg)](https://github.com/CesarBallardini/min-cpu-forth/actions/workflows/security.yml)
 
 A design exploration of a minimal virtual CPU instruction set purpose-built to run an
-**Indirect Threaded Code (ITC) Forth** interpreter, plus a Python implementation of that
-model: a small `CPU` (flat memory, a data stack, and a return stack) and a `ForthExecutioner`
-that installs the Forth word dictionary and supports colon definitions.
+**Indirect Threaded Code (ITC) Forth** interpreter, plus a Python implementation of that model:
+a small `CPU` (flat memory, a data stack, and a return stack), a `ForthExecutioner` (word
+dictionary, colon definitions) that models Forth *semantics* directly, and an `Emulator` -- a
+real fetch-decode-execute loop over the CPU's 17-opcode instruction set.
 
 `docs/design/` has the full design conversation (registers, memory map, word layout, and the
 minimal instruction set the CPU is meant to expose); `docs/prototypes/` has the four earlier,
 throwaway Python scripts this package was consolidated from -- kept as historical reference,
-not maintained further. Read [`docs/01-first-steps.md`](docs/01-first-steps.md) first: it walks
-through that history in order and calls out where the design and the code disagree.
-[`docs/02-cpu-design.md`](docs/02-cpu-design.md) picks up from there with a reconciled,
-justified opcode catalog for a CPU that can actually run the minimal Forth word list. See
-`CLAUDE.md` for how the pieces fit together.
+not maintained further. Read the numbered docs in order:
+[`docs/01-first-steps.md`](docs/01-first-steps.md) walks through that design history and calls
+out where the design and the code disagree; [`docs/02-cpu-design.md`](docs/02-cpu-design.md)
+is the reconciled, justified opcode catalog the `Emulator` implements;
+[`docs/03-assembler-plan.md`](docs/03-assembler-plan.md) is the phased plan -- informed by Brad
+Rodriguez's "Moving Forth" series and his CamelForth reference kernel -- for the ITC Forth
+kernel that runs on top of it, not yet built. See `CLAUDE.md` for how the pieces fit together.
 
 The design in `docs/design/` originated from a conversation with ChatGPT-4, seeded with an
 excerpt from Brad Rodriguez's article
@@ -70,11 +73,15 @@ make precommit        # run all pre-commit hooks by hand
 src/min_cpu_forth/
   cpu.py                  # Stack, CPU: flat memory, IP/W registers, data + return stacks
   forth.py                # ForthExecutioner: word dictionary, colon definitions
+  emulator.py              # Emulator: fetch-decode-execute loop over the 17-opcode ISA
 docs/
-  design/                 # the design conversation: registers, memory map, instruction set
-  prototypes/             # the four original assembler-interpreter-*.py scripts (frozen)
+  01-first-steps.md       # reviewer's walk-through of the design history
+  02-cpu-design.md         # the reconciled opcode catalog
+  03-assembler-plan.md     # phased plan for an ITC Forth kernel (not yet built)
+  design/                  # the design conversation: registers, memory map, instruction set
+  prototypes/               # the four original assembler-interpreter-*.py scripts (frozen)
 tests/
-  unit/                    # no infrastructure, fast (test_cpu.py, test_forth.py)
+  unit/                    # no infrastructure, fast (test_cpu.py, test_forth.py, test_emulator.py)
   integration/             # need a real service (placeholder, not used yet)
   acceptance/
     features/               # .feature files (Gherkin) -- square.feature

@@ -182,6 +182,34 @@ def test_halt_stops_run(cpu: CPU) -> None:
 
 
 @pytest.mark.unit
+def test_in_reads_from_the_input_queue(cpu: CPU) -> None:
+    emulator = Emulator(cpu, [Instruction(Opcode.IN, a='X')])
+    emulator.input_queue.append(ord('A'))
+
+    emulator.step()
+
+    assert emulator.registers['X'] == ord('A')
+
+
+@pytest.mark.unit
+def test_in_raises_when_input_queue_is_empty(cpu: CPU) -> None:
+    emulator = Emulator(cpu, [Instruction(Opcode.IN, a='X')])
+
+    with pytest.raises(EmulatorError):
+        emulator.step()
+
+
+@pytest.mark.unit
+def test_out_appends_to_output(cpu: CPU) -> None:
+    emulator = Emulator(cpu, [Instruction(Opcode.OUT, a='X')])
+    emulator.registers['X'] = ord('!')
+
+    emulator.step()
+
+    assert emulator.output == [ord('!')]
+
+
+@pytest.mark.unit
 def test_dup_via_repeated_push_pop(cpu: CPU) -> None:
     """`DUP` exactly as written in minimal-itc-forth-primitives-1.md / docs/02-cpu-design.md."""
     program = [

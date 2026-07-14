@@ -76,9 +76,23 @@ to solve, a register-or-immediate `ADD`/`SUB` already covers.
 | `OR` | `r, src` | `r := r \| src` | Same argument as `AND`. Needed directly by the `OR` word. |
 | `INVERT` | `r` | `r := ~r` (bitwise complement) | Same argument; unary. Needed directly by the `INVERT` word. |
 
-**Total: 15 opcodes** -- the 10-op core, plus `SUB` and `JS`, plus `AND`/`OR`/`INVERT`. That's 5
-additions in place of stage 5's 10 unreconciled ones, and every one of the 5 has a specific word
-or idiom below that can't be built without it.
+### New: I/O (2 opcodes)
+
+| Opcode | Operands | Semantics | Why it's necessary |
+| --- | --- | --- | --- |
+| `IN` | `r` | `r := next value from the input stream` | None of the other 15 opcodes touch anything outside `mem`/the stacks/registers. `KEY` (and everything built on it -- `ACCEPT`, `QUIT`'s REPL) needs to read from *somewhere outside the machine*, which no combination of `LOAD`/`ADD`/`SUB`/branches can synthesize. No port number: this machine only needs one input stream, matching what `KEY` actually requires. |
+| `OUT` | `r` | `write r to the output stream` | Same argument, output side: `EMIT` (and `TYPE`, `CR`, error messages built on it) needs to write somewhere outside the machine. |
+
+Added when the plan in `docs/03-assembler-plan.md` needed a testable `KEY`/`EMIT` for
+the outer interpreter -- `WORD`/`FIND`/`NUMBER?`/`INTERPRET`/`QUIT` all ultimately read through
+`KEY` and report errors through `EMIT`, and nothing in the original 15 could express that. Kept
+minimal on purpose: `KEY`/`EMIT` are the only I/O a Forth *kernel* needs (per the CamelForth
+reference in `docs/03`) -- `ACCEPT`, `TYPE`, `CR` are colon definitions built on these two, not
+additional opcodes.
+
+**Total: 17 opcodes** -- the 10-op core, plus `SUB` and `JS`, plus `AND`/`OR`/`INVERT`, plus
+`IN`/`OUT`. That's 7 additions in place of stage 5's 10 unreconciled ones, and every one has a
+specific word or idiom that can't be built without it.
 
 ### What did *not* make the cut, and why
 
@@ -235,7 +249,7 @@ already been fetched. No new opcode, no new idiom.
 | Comparisons / logic | `= <> < > 0= 0< AND OR INVERT` | `=`/`<>`/`<`/`>`/`0=`/`0<`: `SUB` + `JZ`/`JS` boolean idiom. `AND`/`OR`/`INVERT`: new bitwise opcodes |
 | Control / execution | `LIT DOCOL EXIT BRANCH 0BRANCH BYE/HALT` | Core only, exactly as `docs/design/instruction-set.md` already specifies |
 | Loops | `DO LOOP +LOOP I` (`J` optional) | Core, using the `PUSH_R`/`POP_R`/`ADD`/`SUB`/`JS` idiom above |
-| Outer interpreter | `EXECUTE` | Core only (free) |
+| Outer interpreter | `EXECUTE`, `KEY`, `EMIT` | `EXECUTE`: core only (free). `KEY`/`EMIT`: thin wrappers over `IN`/`OUT` |
 
 Every word from the design conversation's own summary tables is accounted for by the 15-opcode
 catalog. Nothing here requires a sixteenth opcode.
@@ -254,7 +268,10 @@ catalog. Nothing here requires a sixteenth opcode.
   document specifies opcode *semantics* only. Encoding them into the flat memory model is a
   separate concern -- see `docs/design/response-1.md`'s suggested opcode-list-as-bytes for a
   starting point, not yet reconciled with this catalog.
-- **A real fetch/decode/execute loop.** As `docs/01-first-steps.md` found, no prototype and
-  nothing currently in `src/min_cpu_forth/` executes an opcode stream -- everything runs at the
-  Python-semantic level instead. This document is the ISA that loop would need to implement; it
-  does not implement it.
+- **A real fetch/decode/execute loop.** This was true when this document was first written: no
+  prototype, and nothing in `src/min_cpu_forth/`, executed an opcode stream. `src/min_cpu_forth/emulator.py`
+  has since implemented exactly that (all 17 opcodes above, including `IN`/`OUT`) -- see
+  `docs/03-assembler-plan.md` for what runs on top of it.
+- **A text assembler and an actual Forth kernel written against this ISA.** This document only
+  ever specified opcode semantics. `docs/03-assembler-plan.md` is the phased plan for both: a
+  minimal mnemonic/label assembler, then an ITC Forth kernel assembled against it.

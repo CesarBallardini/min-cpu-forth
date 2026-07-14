@@ -32,17 +32,21 @@ prototype demos interactively without a full script.
 
 - **`src/min_cpu_forth/`** — the maintained, tested implementation. `cpu.py` has `Stack` and
   `CPU`; `forth.py` has `ForthExecutioner`; `emulator.py` has `Emulator`, a real
-  fetch-decode-execute loop over `Instruction`s (`docs/02-cpu-design.md`'s 15-opcode ISA) --
+  fetch-decode-execute loop over `Instruction`s (`docs/02-cpu-design.md`'s 17-opcode ISA) --
   this is where `docs/01-first-steps.md`'s "no prototype ever emulated the opcode level" gap
   gets closed. `cpu.py`/`forth.py` model Forth *semantics* directly; `emulator.py` is the
-  separate, lower-level opcode machine those semantics were never actually run on top of. This
-  is where new Forth words, ISA changes, or VM fixes belong. Covered by `tests/unit/` and
-  `tests/acceptance/` (pytest-bdd).
+  separate, lower-level opcode machine those semantics were never actually run on top of.
+  `docs/03-assembler-plan.md` is the phased plan for actually running Forth on `emulator.py`
+  (a text assembler, then an ITC kernel assembled against it) -- nothing in that plan is built
+  yet. This is where new Forth words, ISA changes, or VM fixes belong. Covered by `tests/unit/`
+  and `tests/acceptance/` (pytest-bdd).
 
-- **`docs/01-first-steps.md`** and **`docs/02-cpu-design.md`** — read these before the raw
-  design conversation below. `01` is a reviewer's walk-through of how the design and the four
-  prototypes evolved (and where they disagree with each other); `02` is the reconciled,
-  justified 15-opcode ISA that `emulator.py` implements.
+- **`docs/01-first-steps.md`**, **`docs/02-cpu-design.md`**, and **`docs/03-assembler-plan.md`**
+  — read these, in order, before the raw design conversation below. `01` is a reviewer's
+  walk-through of how the design and the four prototypes evolved (and where they disagree with
+  each other); `02` is the reconciled, justified 17-opcode ISA that `emulator.py` implements;
+  `03` is the phased plan -- informed by Brad Rodriguez's "Moving Forth" series and CamelForth --
+  for the ITC Forth kernel that hasn't been built yet.
 
 - **`docs/design/`** — the design conversation, read in this order to understand the current
   state of the design:

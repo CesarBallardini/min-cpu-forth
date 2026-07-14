@@ -3,11 +3,13 @@
 `min_cpu_forth.cpu.CPU` and `min_cpu_forth.forth.ForthExecutioner` model Forth word
 *semantics* directly in Python -- there's no opcode stream, no `PC`, nothing that
 actually fetches and executes an instruction. This module is that missing piece: a
-real `Instruction` stream, a `PC`, and a dispatch loop over the 15-opcode ISA
+real `Instruction` stream, a `PC`, and a dispatch loop over the 17-opcode ISA
 `docs/02-cpu-design.md` specifies. It reuses `CPU` as its *data path* only --
 `cpu.mem` for `LOAD`/`STORE`, `cpu.data_stack`/`cpu.return_stack` for the stack ops --
 and owns its own general-purpose register file and `PC`, entirely separate from
 `CPU.ip`/`CPU.w` (which stay reserved for `ForthExecutioner`'s semantic-level model).
+`IN`/`OUT` read from and write to the emulator's own `input_queue`/`output` -- `CPU`
+has no I/O concept at all, so these two don't touch it.
 
 Per-opcode operand meaning (mirrors `docs/02-cpu-design.md`'s catalog table):
 
@@ -20,6 +22,7 @@ Per-opcode operand meaning (mirrors `docs/02-cpu-design.md`'s catalog table):
 | `JMP`                                    | register holding target  | --                            | --       |
 | `JZ` / `JS`                              | register to test         | --                            | offset   |
 | `PUSH_D` / `POP_D` / `PUSH_R` / `POP_R`  | register                 | --                            | --       |
+| `IN` / `OUT`                             | register                 | --                            | --       |
 | `HALT`                                   | --                       | --                            | --       |
 
 There's no text assembler here -- `docs/02-cpu-design.md` explicitly defers byte-level
@@ -29,6 +32,7 @@ offsets, the same way the design docs' own `asm` listings work.
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -40,7 +44,7 @@ if TYPE_CHECKING:
 
 
 class Opcode(Enum):
-    """The 15 opcodes of the `docs/02-cpu-design.md` ISA."""
+    """The 17 opcodes of the `docs/02-cpu-design.md` ISA."""
 
     LOAD = 'LOAD'
     STORE = 'STORE'
@@ -56,6 +60,8 @@ class Opcode(Enum):
     AND = 'AND'
     OR = 'OR'
     INVERT = 'INVERT'
+    IN = 'IN'
+    OUT = 'OUT'
     HALT = 'HALT'
 
 
@@ -82,6 +88,8 @@ class Emulator:
         self.program = program
         self.pc = 0
         self.registers: dict[str, int] = {}
+        self.input_queue: deque[int] = deque()
+        self.output: list[int] = []
         self._handlers: dict[Opcode, Callable[[Instruction], None]] = {
             Opcode.LOAD: self._exec_load,
             Opcode.STORE: self._exec_store,
@@ -97,6 +105,8 @@ class Emulator:
             Opcode.POP_D: self._exec_pop_d,
             Opcode.PUSH_R: self._exec_push_r,
             Opcode.POP_R: self._exec_pop_r,
+            Opcode.IN: self._exec_in,
+            Opcode.OUT: self._exec_out,
             Opcode.HALT: self._exec_halt,
         }
 
@@ -219,6 +229,18 @@ class Emulator:
         """Pop the return stack into register `a`."""
         reg = self._require_register(instr.a)
         self.registers[reg] = self.cpu.return_stack.pop()
+
+    def _exec_in(self, instr: Instruction) -> None:
+        """Pop the next value off `input_queue` into register `a`."""
+        reg = self._require_register(instr.a)
+        if not self.input_queue:
+            raise EmulatorError('IN: input queue is empty')
+        self.registers[reg] = self.input_queue.popleft()
+
+    def _exec_out(self, instr: Instruction) -> None:
+        """Append register `a`'s value to `output`."""
+        reg = self._require_register(instr.a)
+        self.output.append(self._reg(reg))
 
     def _exec_halt(self, instr: Instruction) -> None:
         """Stop the CPU."""
