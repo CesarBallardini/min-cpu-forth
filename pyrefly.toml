@@ -8,4 +8,7 @@
 # https://pyrefly.org/ for the current keys before relying on this file.
 
 project-includes = ["src", "tests"]
+# Let the checkers resolve `from conftest import ...` for the shared, fully-typed kernel test
+# harness (RunKernel / MachineState); mirrors pyrightconfig.json's extraPaths.
+search-path = ["tests"]
 python-version = "3.14"

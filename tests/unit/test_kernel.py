@@ -5,10 +5,12 @@ from typing import TYPE_CHECKING
 import pytest
 
 from min_cpu_forth import layout
+from min_cpu_forth.adapters.counted_string import MemoryCountedStringAdapter
 from min_cpu_forth.adapters.dictionary import MemoryDictionaryAdapter
 from min_cpu_forth.adapters.memory import ListMemoryAdapter
 from min_cpu_forth.adapters.system_variables import MemorySystemVariablesAdapter
 from min_cpu_forth.domain.dtos import AssemblyDto, ColonWordDto, LiteralCellDto, WordReferenceDto
+from min_cpu_forth.domain.register import Register
 from min_cpu_forth.domain.types import Address, Cell, ProgramIndex
 from min_cpu_forth.errors import KernelError
 from min_cpu_forth.services.kernel.builder import KernelBuilder, boot, boot_thread
@@ -142,7 +144,9 @@ def test_boot_referencing_an_uninstalled_word_raises(kernel: KernelContainer) ->
 def test_build_rejects_a_kernel_whose_start_is_not_at_index_zero() -> None:
     """The boot guard: ``START`` must assemble at program index 0 (``EmulatorService`` starts there)."""
     memory = ListMemoryAdapter(layout.MEMORY_SIZE)
-    dictionary = MemoryDictionaryAdapter(memory, MemorySystemVariablesAdapter(memory))
+    dictionary = MemoryDictionaryAdapter(
+        memory, MemorySystemVariablesAdapter(memory), MemoryCountedStringAdapter(memory)
+    )
     builder = KernelBuilder(assembler=_StartMisplacedAssembler(), dictionary=dictionary)
 
     with pytest.raises(KernelError, match='START'):
@@ -191,3 +195,16 @@ def test_boot_thread_maps_names_to_references_and_ints_to_literals() -> None:
         LiteralCellDto(Cell(3)),
         WordReferenceDto('BYE'),
     )
+
+
+@pytest.mark.unit
+def test_boot_loads_the_program_and_points_ip_at_the_boot_thread(kernel: KernelContainer) -> None:
+    """The boot() helper: load the image and set IP -- ready to run from START."""
+    machine = kernel.machine()
+    emulator = machine.emulator()
+    image = kernel.kernel_builder().build(colon_words=[], boot=boot_thread('BYE'))
+
+    boot(emulator, image)
+
+    assert emulator.pc == 0  # run starts at START (program index 0)
+    assert emulator.registers.read(Register.IP) == image.boot_ip

@@ -27,3 +27,9 @@ LATEST_ADDR = Address(SYSTEM_VARS_BASE + 1)
 SYSTEM_VARS_SIZE = 8
 DICTIONARY_BASE = Address(SYSTEM_VARS_BASE + SYSTEM_VARS_SIZE)
 DICTIONARY_TOP = Address(DICTIONARY_SIZE)  # exclusive upper bound; equals the data-stack floor
+
+# A fixed scratch buffer near the top of the dictionary block where WORD builds its counted string
+# (Phase 4). It sits well above the small kernel dictionary; a real growable dictionary would place
+# it after DP with a bounds check, but the kernel's word set is fixed and tiny.
+WORD_BUFFER_SIZE = 64
+WORD_BUFFER_BASE = Address(DICTIONARY_SIZE - WORD_BUFFER_SIZE)

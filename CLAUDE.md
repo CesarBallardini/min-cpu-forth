@@ -45,28 +45,31 @@ reproduces prototype demos interactively without a full script.
     (`Opcode` (a `StrEnum`)/`InstructionField`/`OperandKind`), `types.py` (the `Address`/
     `ProgramIndex`/`Cell` `NewType`s that make the Harvard split nominal), `register.py`
     (`Register`, a `StrEnum` for the reserved machine registers), and `dtos.py` (the `*Dto`
-    boundary types `InstructionDto`/`AssemblyDto`/`KernelImageDto`/`WordSpecDto`/`ThreadItemDto`
-    …, plus the static `OperandSpec`).
+    boundary types `InstructionDto`/`AssemblyDto`/`KernelImageDto`/`WordSpecDto`/`ThreadItemDto`/
+    `DictionaryHeaderDto` …, plus the static `OperandSpec` and `HeaderField`, the header layout).
   - **`ports.py`** — the boundary Protocols (`MemoryPort`, `StackPort`, `RegisterFilePort`,
-    `CharacterInput/OutputPort`, and the assembler-pipeline ports). Services are typed against
-    these, never against a concrete adapter.
+    `CharacterInput/OutputPort`, `DictionaryPort` and `SystemVariablesPort`, and the
+    assembler-pipeline ports). Services are typed against these, never against a concrete adapter.
   - **`services/`** — the use cases, depending only on ports: `emulator.py`'s `EmulatorService`
     (a real fetch-decode-execute loop over `InstructionDto`s -- `docs/02-cpu-design.md`'s
     17-opcode ISA, closing `docs/01-first-steps.md`'s "no prototype ever emulated the opcode
     level" gap), `forth.py`'s `ForthService` (Forth *semantics* -- stack effects, `DOCOL`/`EXIT`,
     colon definitions -- the direct Python model), `assembler/` (the Phase 0 parse → resolve →
-    emit pipeline of `docs/03-assembler-plan.md`), and `kernel/` (Phase 1: `routines.py`'s ITC
-    threading core as assembler source and `builder.py`'s `KernelBuilder`, which lays a real
-    dictionary into `cpu.mem` so a colon definition runs through genuine `NEXT`/`DOCOL`/`EXIT`).
+    emit pipeline of `docs/03-assembler-plan.md`), and `kernel/` (Phases 1-2: `routines.py`'s ITC
+    threading core plus the `PRIMITIVES` word table as assembler source, and `builder.py`'s
+    `KernelBuilder`, which installs words through a `DictionaryPort` so a colon definition runs
+    through genuine `NEXT`/`DOCOL`/`EXIT`; `builder.py` also holds the `boot`/`boot_thread` helpers).
   - **`adapters/`** — concrete port implementations (`ListMemoryAdapter`, `DownwardStackAdapter`,
     `DictRegisterFileAdapter`, `QueueCharacterInputAdapter`, `BufferCharacterOutputAdapter`,
-    `StringSourceAdapter`), independent of `services/`.
+    `StringSourceAdapter`, `MemoryDictionaryAdapter` (owns the header layout + link chain), and
+    `MemorySystemVariablesAdapter` (`DP`/`LATEST`)), independent of `services/`.
   - **`containers.py`** — `MachineContainer`/`AssemblerContainer`, the `dependency-injector`
     composition root and the only place adapters meet ports. **`errors.py`** (the `MachineError`
     hierarchy) and **`layout.py`** (the `cpu.mem` memory-map constants) are the shared kernel.
   - `docs/03-assembler-plan.md` is the phased plan for running Forth on `EmulatorService`;
-    **Phases 0-2 (the assembler, the ITC threading core, and the core primitive word set) are
-    built**; Phases 3+ are not yet.
+    **Phases 0-2 and 4 (the assembler, the ITC threading core, the core primitive word set, and the
+    I/O + dictionary-search words) are built**; Phase 3 (branching/loop runtime) is skipped for now,
+    and Phases 5+ are not yet.
 
 - **`docs/01-first-steps.md`**, **`docs/02-cpu-design.md`**, and **`docs/03-assembler-plan.md`**
   — read these, in order, before the raw design conversation below. `01` is a reviewer's

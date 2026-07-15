@@ -5,20 +5,97 @@ container instance, every fixture that requests ``machine`` shares one clean dat
 and both stacks), exactly as the wired-together services do at runtime.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple, Protocol
 
 import pytest
 
 from min_cpu_forth.containers import AssemblerContainer, KernelContainer, MachineContainer
+from min_cpu_forth.domain.types import Address
+from min_cpu_forth.services.kernel.builder import boot as boot_image
+from min_cpu_forth.services.kernel.builder import boot_thread
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
     from min_cpu_forth.adapters.io import (
         BufferCharacterOutputAdapter,
         QueueCharacterInputAdapter,
     )
+    from min_cpu_forth.domain.dtos import ColonWordDto, KernelImageDto
     from min_cpu_forth.ports import AssemblerPort, MemoryPort, RegisterFilePort, StackPort
     from min_cpu_forth.services.emulator import EmulatorService
     from min_cpu_forth.services.forth import ForthService
+
+
+class MachineState(NamedTuple):
+    """The observable Forth-machine state after a kernel run -- what a test asserts against.
+
+    ``data_stack`` is the result; ``return_stack`` should be balanced after a well-formed run;
+    ``registers`` exposes the reserved registers (IP/W/XT/NEXTREG); ``memory`` is the data space;
+    ``output`` is the character buffer EMIT wrote to; ``halted`` confirms a clean BYE/HALT.
+    """
+
+    data_stack: StackPort
+    return_stack: StackPort
+    registers: RegisterFilePort
+    memory: MemoryPort
+    output: BufferCharacterOutputAdapter
+    halted: bool
+
+
+class RunKernel(Protocol):
+    """Builds a kernel from a boot thread, runs it, and returns the final ``MachineState``.
+
+    ``feed`` seeds the input device; ``colon_words`` are installed before the boot thread;
+    ``string_at`` writes a counted string at an address; ``after_build`` is a hook that runs once
+    the image is built (before ``run``) for tests that must poke memory mid-flight.
+    """
+
+    def __call__(
+        self,
+        *,
+        boot: Sequence[str | int],
+        feed: str = ...,
+        colon_words: Sequence[ColonWordDto] = ...,
+        string_at: tuple[int, str] | None = ...,
+        after_build: Callable[[KernelContainer, KernelImageDto], None] | None = ...,
+    ) -> MachineState: ...
+
+
+@pytest.fixture
+def run_kernel(kernel: KernelContainer) -> RunKernel:
+    """A callable that builds + runs a kernel and captures its final ``MachineState``."""
+
+    def _run(
+        *,
+        boot: Sequence[str | int],
+        feed: str = '',
+        colon_words: Sequence[ColonWordDto] = (),
+        string_at: tuple[int, str] | None = None,
+        after_build: Callable[[KernelContainer, KernelImageDto], None] | None = None,
+    ) -> MachineState:
+        machine = kernel.machine()
+        emulator = machine.emulator()
+        image = kernel.kernel_builder().build(colon_words=list(colon_words), boot=boot_thread(*boot))
+        if string_at is not None:
+            address, text = string_at
+            kernel.counted_strings().write(Address(address), text)
+        if after_build is not None:
+            after_build(kernel, image)
+        if feed:
+            machine.char_input().feed([ord(char) for char in feed])
+        boot_image(emulator, image)
+        emulator.run()
+        return MachineState(
+            data_stack=machine.data_stack(),
+            return_stack=machine.return_stack(),
+            registers=emulator.registers,
+            memory=machine.memory(),
+            output=machine.char_output(),
+            halted=emulator.halted,
+        )
+
+    return _run
 
 
 @pytest.fixture

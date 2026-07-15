@@ -10,9 +10,10 @@ the next phase starts, informed by Brad Rodriguez's "Moving Forth" series and hi
 reference kernel.
 
 This is mostly a plan, not a record of what's built -- same posture as `docs/02-cpu-design.md`.
-**Phases 0-2 are now implemented** (the assembler, the ITC threading core, and the core primitive
-word set -- see their sections below); Phases 3+ are not. Remaining phases get implemented one at a
-time, each against this document.
+**Phases 0-2 and 4 are now implemented** (the assembler, the ITC threading core, the core primitive
+word set, and the I/O + dictionary-search words -- see their sections below); **Phase 3**
+(branching/loop runtime) was skipped for now, and Phases 5+ are not. Remaining phases get
+implemented one at a time, each against this document.
 
 > **Naming note.** This document was written against an earlier flat layout and still refers to
 > `Emulator`/`Instruction`/`emulator.py` and `min_cpu_forth.cpu`. The code has since been
@@ -307,10 +308,21 @@ are unbounded Python ints, so there's no overflow to detect and no reason to por
 **Tests:** hand-threaded (not yet compiler-generated -- that's Phase 6) programs exercising these
 runtime words directly, e.g. a manually-threaded countdown loop using `(do)`/`(loop)`/`I`.
 
-### Phase 4 -- I/O words and dictionary search
+### Phase 4 -- I/O words and dictionary search  ✅ built
+
+**Status:** implemented as CODE words in `services/kernel/routines.py`'s `PRIMITIVES` table --
+`KEY`/`EMIT` (over `IN`/`OUT`), `NUMBER` (signed decimal, `n = n*10 + digit` via an 8N+2N add
+sequence), `WORD`, and `FIND` (which walks the `LATEST` chain the `DictionaryPort`/`HeaderField`
+layout defines). Doing these as CODE words -- assembler loops via `JZ`/`JS`/`JMP` -- is what let
+Phase 4 land **without Phase 3**: no threaded control flow is needed. Three scope calls (this
+build): **`WORD` tokenizes the input device directly** via `KEY`, deferring the Terminal Input
+Buffer / `>IN` / `ACCEPT` to Phase 5 (so its input must be delimiter-terminated); **`NUMBER` is
+decimal-only** (`BASE` deferred) though it handles a leading `-`. Covered by
+`tests/unit/test_io_words.py`, whose `FIND` cases cross-check the assembler result against the
+host `DictionaryPort.find`. The design below is what it was built to.
 
 **Builds on:** the `IN`/`OUT` opcodes; Phase 1's header format (specifically the link-before-name
-chain `FIND` walks).
+chain `FIND` walks), now owned by `MemoryDictionaryAdapter`.
 
 **What gets built:** `KEY`/`EMIT` as thin CODE wrappers over `IN`/`OUT`; `WORD` (tokenizer --
 skip leading delimiters, scan to next delimiter, build a counted result); `FIND` (walk the

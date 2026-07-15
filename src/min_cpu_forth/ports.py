@@ -163,6 +163,19 @@ class SystemVariablesPort(Protocol):
 
 
 @runtime_checkable
+class CountedStringPort(Protocol):
+    """Reads and writes length-prefixed strings ( ``[length][char...]`` ) in memory."""
+
+    def read(self, address: Address) -> str:
+        """Return the counted string whose length cell is at ``address``."""
+        ...
+
+    def write(self, address: Address, text: str) -> Address:
+        """Write ``text`` as a counted string at ``address``; return the address just past it."""
+        ...
+
+
+@runtime_checkable
 class DictionaryPort(Protocol):
     """The Forth dictionary: append word headers/threads and search the link chain."""
 

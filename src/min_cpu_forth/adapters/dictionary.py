@@ -17,16 +17,22 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
     from min_cpu_forth.domain.types import ProgramIndex
-    from min_cpu_forth.ports import MemoryPort, SystemVariablesPort
+    from min_cpu_forth.ports import CountedStringPort, MemoryPort, SystemVariablesPort
 
 
 class MemoryDictionaryAdapter(DictionaryPort):
     """Appends headers/threads into the shared memory and searches the link chain."""
 
-    def __init__(self, memory: MemoryPort, system_variables: SystemVariablesPort) -> None:
-        """Bind to the shared memory and system variables, resetting the dictionary to empty."""
+    def __init__(
+        self,
+        memory: MemoryPort,
+        system_variables: SystemVariablesPort,
+        counted_strings: CountedStringPort,
+    ) -> None:
+        """Bind to the shared memory, system variables, and name codec; reset the dictionary."""
         self._memory = memory
         self._vars = system_variables
+        self._names = counted_strings
         self._vars.dp = DICTIONARY_BASE
         self._vars.latest = Address(0)
 
@@ -54,9 +60,7 @@ class MemoryDictionaryAdapter(DictionaryPort):
         self.append_cell(int(immediate))
         self.append_cell(0)  # smudge: 0 = fully defined
         name_field = self.here()
-        self.append_cell(len(name))
-        for char in name:
-            self.append_cell(ord(char))
+        self._vars.dp = self._names.write(name_field, name)  # the name is a counted string
         cfa = self.here()
         self.append_cell(code_field)
         for item in thread:
@@ -81,12 +85,11 @@ class MemoryDictionaryAdapter(DictionaryPort):
     def _read_header(self, name_field: Address) -> DictionaryHeaderDto:
         """Decode the header whose name field is at ``name_field``."""
         start = Address(name_field - HeaderField.NAME_LENGTH)
-        length = self._memory.read(name_field)
-        name = ''.join(chr(self._memory.read(Address(name_field + 1 + offset))) for offset in range(length))
+        name = self._names.read(name_field)
         return DictionaryHeaderDto(
             name=name,
             link=Address(self._memory.read(Address(start + HeaderField.LINK))),
             immediate=bool(self._memory.read(Address(start + HeaderField.IMMEDIATE))),
             smudge=bool(self._memory.read(Address(start + HeaderField.SMUDGE))),
-            cfa=Address(name_field + 1 + length),
+            cfa=Address(name_field + 1 + len(name)),
         )

@@ -26,4 +26,4 @@ Feature: Threaded execution of colon definitions
 
   Scenario: A comparison word pushes a flag
     When I boot the kernel with "LIT 4 LIT 4 = BYE"
-    Then the threaded data stack top is 1
+    Then the threaded data stack top is -1

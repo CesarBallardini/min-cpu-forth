@@ -3,6 +3,7 @@
 import pytest
 
 from min_cpu_forth import layout
+from min_cpu_forth.adapters.counted_string import MemoryCountedStringAdapter
 from min_cpu_forth.adapters.dictionary import MemoryDictionaryAdapter
 from min_cpu_forth.adapters.memory import ListMemoryAdapter
 from min_cpu_forth.adapters.system_variables import MemorySystemVariablesAdapter
@@ -12,7 +13,10 @@ from min_cpu_forth.domain.types import Address, ProgramIndex
 
 def _fresh() -> tuple[ListMemoryAdapter, MemoryDictionaryAdapter]:
     memory = ListMemoryAdapter(layout.MEMORY_SIZE)
-    return memory, MemoryDictionaryAdapter(memory, MemorySystemVariablesAdapter(memory))
+    dictionary = MemoryDictionaryAdapter(
+        memory, MemorySystemVariablesAdapter(memory), MemoryCountedStringAdapter(memory)
+    )
+    return memory, dictionary
 
 
 @pytest.mark.unit
@@ -66,3 +70,29 @@ def test_append_word_marks_immediate_words() -> None:
     header = dictionary.find('IF')
     assert header is not None
     assert header.immediate is True
+
+
+@pytest.mark.unit
+def test_append_cell_advances_here_and_returns_the_address() -> None:
+    memory, dictionary = _fresh()
+
+    start = dictionary.here()
+    written = dictionary.append_cell(77)
+
+    assert written == start
+    assert dictionary.here() == start + 1
+    assert memory.read(written) == 77  # noqa: PLR2004 -- the value appended
+
+
+@pytest.mark.unit
+def test_system_variables_are_backed_by_their_memory_cells() -> None:
+    memory = ListMemoryAdapter(layout.MEMORY_SIZE)
+    system_variables = MemorySystemVariablesAdapter(memory)
+
+    system_variables.dp = Address(100)
+    system_variables.latest = Address(50)
+
+    assert system_variables.dp == 100
+    assert system_variables.latest == 50
+    assert memory.read(layout.DP_ADDR) == 100  # noqa: PLR2004 -- DP is stored in its cell
+    assert memory.read(layout.LATEST_ADDR) == 50  # noqa: PLR2004 -- LATEST likewise

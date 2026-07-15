@@ -25,7 +25,14 @@ and the ``CODE_WORDS`` list are both derived from one ``PRIMITIVES`` table (Phas
 
 from typing import NamedTuple
 
-from min_cpu_forth.domain.dtos import CodeWordDto
+from min_cpu_forth.domain.dtos import CodeWordDto, HeaderField
+from min_cpu_forth.layout import LATEST_ADDR, WORD_BUFFER_BASE
+
+# Offsets of header cells from a word's name field (name field - this = the cell). FIND bakes
+# these into its assembler; test_primitives guards that they stay derived from HeaderField.
+_IMMEDIATE_FROM_NAME_FIELD = int(HeaderField.NAME_LENGTH) - int(HeaderField.IMMEDIATE)
+_SMUDGE_FROM_NAME_FIELD = int(HeaderField.NAME_LENGTH) - int(HeaderField.SMUDGE)
+_LINK_FROM_NAME_FIELD = int(HeaderField.NAME_LENGTH)
 
 # Label of the shared colon-entry routine (a colon word's code-field value is this routine's
 # program index). Not itself a dictionary word.
@@ -378,7 +385,7 @@ EQUALS:
         PUSH_D Z
         JMP  NEXTREG
 EQ_TRUE:
-        SET  Z, 1
+        SET  Z, -1           ; Forth true = -1 (all bits set)
         PUSH_D Z
         JMP  NEXTREG
 """,
@@ -392,7 +399,7 @@ NOTEQUALS:
         POP_D Y
         SUB  Y, X
         JZ   Y, NE_FALSE
-        SET  Z, 1
+        SET  Z, -1           ; Forth true = -1 (all bits set)
         PUSH_D Z
         JMP  NEXTREG
 NE_FALSE:
@@ -414,7 +421,7 @@ LESSTHAN:
         PUSH_D Z
         JMP  NEXTREG
 LT_TRUE:
-        SET  Z, 1
+        SET  Z, -1           ; Forth true = -1 (all bits set)
         PUSH_D Z
         JMP  NEXTREG
 """,
@@ -432,7 +439,7 @@ GREATERTHAN:
         PUSH_D Z
         JMP  NEXTREG
 GT_TRUE:
-        SET  Z, 1
+        SET  Z, -1           ; Forth true = -1 (all bits set)
         PUSH_D Z
         JMP  NEXTREG
 """,
@@ -448,7 +455,7 @@ ZEROEQ:
         PUSH_D Z
         JMP  NEXTREG
 ZE_TRUE:
-        SET  Z, 1
+        SET  Z, -1           ; Forth true = -1 (all bits set)
         PUSH_D Z
         JMP  NEXTREG
 """,
@@ -464,7 +471,7 @@ ZEROLT:
         PUSH_D Z
         JMP  NEXTREG
 ZL_TRUE:
-        SET  Z, 1
+        SET  Z, -1           ; Forth true = -1 (all bits set)
         PUSH_D Z
         JMP  NEXTREG
 """,
@@ -501,6 +508,196 @@ BITINVERT:
         POP_D X              ; ( a -- ~a )
         INVERT X
         PUSH_D X
+        JMP  NEXTREG
+""",
+    ),
+    # --- Phase 4: I/O, tokenizing, dictionary search, number parsing ---
+    _primitive(
+        'KEY',
+        'KEY',
+        """
+KEY:
+        IN   X               ; ( -- c )  read one input character
+        PUSH_D X
+        JMP  NEXTREG
+""",
+    ),
+    _primitive(
+        'EMIT',
+        'EMIT',
+        """
+EMIT:
+        POP_D X              ; ( c -- )  write one output character
+        OUT  X
+        JMP  NEXTREG
+""",
+    ),
+    _primitive(
+        'NUMBER',
+        'NUMBER',
+        """
+NUMBER:
+        POP_D PTR            ; ( c-addr -- n flag )  parse a counted decimal string (signed)
+        LOAD LEN, PTR        ; LEN = length prefix
+        ADD  PTR, 1          ; PTR -> first char
+        SUB  N, N            ; N := 0
+        SUB  NEG, NEG        ; NEG := 0
+        JZ   LEN, NUM_FAIL   ; empty -> fail
+        LOAD C, PTR
+        MOV  T, C
+        SUB  T, 45           ; '-'
+        JZ   T, NUM_NEG
+        SET  R, NUM_LOOP
+        JMP  R
+NUM_NEG:
+        SET  NEG, 1
+        ADD  PTR, 1          ; consume '-'
+        SUB  LEN, 1
+        JZ   LEN, NUM_FAIL   ; "-" alone -> fail
+NUM_LOOP:
+        JZ   LEN, NUM_DONE
+        LOAD C, PTR
+        MOV  DIGIT, C
+        SUB  DIGIT, 48       ; '0'
+        JS   DIGIT, NUM_FAIL ; below '0' -> not a digit
+        MOV  T, DIGIT
+        SUB  T, 10
+        JS   T, NUM_DIGIT_OK ; digit <= 9
+        SET  R, NUM_FAIL     ; above '9' -> not a digit
+        JMP  R
+NUM_DIGIT_OK:
+        MOV  T, N            ; N := N*10  (8N + 2N, no MUL opcode)
+        ADD  T, T
+        MOV  U, T
+        ADD  T, T
+        ADD  T, T
+        ADD  T, U
+        MOV  N, T
+        ADD  N, DIGIT        ; N := N*10 + digit
+        ADD  PTR, 1
+        SUB  LEN, 1
+        SET  R, NUM_LOOP
+        JMP  R
+NUM_DONE:
+        JZ   NEG, NUM_PUSH
+        MOV  T, N
+        SUB  N, N
+        SUB  N, T            ; N := -N
+NUM_PUSH:
+        PUSH_D N
+        SET  FLAG, 1
+        PUSH_D FLAG          ; success
+        JMP  NEXTREG
+NUM_FAIL:
+        SUB  Z, Z
+        PUSH_D Z             ; n := 0
+        PUSH_D Z             ; flag := 0
+        JMP  NEXTREG
+""",
+    ),
+    _primitive(
+        'WORD',
+        'WORD',
+        f"""
+WORD:
+        POP_D DELIM          ; ( delim -- c-addr )  tokenize the input device into a counted string
+WORD_SKIP:
+        IN   C
+        MOV  T, C
+        SUB  T, DELIM
+        JZ   T, WORD_SKIP    ; skip leading delimiters
+        SET  PTR, {WORD_BUFFER_BASE}
+        ADD  PTR, 1          ; leave WORD_BUFFER[0] for the count
+        SUB  LEN, LEN
+WORD_COLLECT:
+        STORE PTR, C
+        ADD  PTR, 1
+        ADD  LEN, 1
+        IN   C
+        MOV  T, C
+        SUB  T, DELIM
+        JZ   T, WORD_END     ; delimiter -> token complete
+        SET  R, WORD_COLLECT
+        JMP  R
+WORD_END:
+        SET  PTR, {WORD_BUFFER_BASE}
+        STORE PTR, LEN       ; write the count prefix
+        PUSH_D PTR
+        JMP  NEXTREG
+""",
+    ),
+    _primitive(
+        'FIND',
+        'FIND',
+        f"""
+FIND:
+        POP_D NAMEADDR       ; ( c-addr -- xt flag )  1 = immediate, -1 = normal, 0 = not found
+        LOAD SLEN, NAMEADDR
+        SET  T, {LATEST_ADDR}
+        LOAD CUR, T          ; CUR = LATEST (newest word's name field)
+FIND_LOOP:
+        JZ   CUR, FIND_NOTFOUND
+        MOV  T, CUR
+        SUB  T, {_SMUDGE_FROM_NAME_FIELD}
+        LOAD SMUDGE, T       ; skip smudged (hidden, mid-compile) words
+        JZ   SMUDGE, FIND_VISIBLE
+        SET  R, FIND_NEXT
+        JMP  R
+FIND_VISIBLE:
+        LOAD WLEN, CUR
+        MOV  T, WLEN
+        SUB  T, SLEN
+        JZ   T, FIND_CMP     ; lengths equal -> compare names
+        SET  R, FIND_NEXT
+        JMP  R
+FIND_CMP:
+        MOV  WPTR, CUR
+        ADD  WPTR, 1
+        MOV  SPTR, NAMEADDR
+        ADD  SPTR, 1
+        MOV  COUNT, SLEN
+FIND_CHARS:
+        JZ   COUNT, FIND_MATCH
+        LOAD WC, WPTR
+        LOAD SC, SPTR
+        MOV  T, WC
+        SUB  T, SC
+        JZ   T, FIND_CHAR_OK
+        SET  R, FIND_NEXT
+        JMP  R
+FIND_CHAR_OK:
+        ADD  WPTR, 1
+        ADD  SPTR, 1
+        SUB  COUNT, 1
+        SET  R, FIND_CHARS
+        JMP  R
+FIND_MATCH:
+        MOV  CFA, CUR
+        ADD  CFA, 1
+        ADD  CFA, WLEN       ; CFA = name field + 1 + length
+        PUSH_D CFA
+        MOV  T, CUR
+        SUB  T, {_IMMEDIATE_FROM_NAME_FIELD}
+        LOAD IMM, T          ; the header's immediate flag
+        JZ   IMM, FIND_NORMAL
+        SET  FLAG, 1         ; immediate word
+        PUSH_D FLAG
+        JMP  NEXTREG
+FIND_NORMAL:
+        SUB  FLAG, FLAG
+        SUB  FLAG, 1         ; normal word -> -1
+        PUSH_D FLAG
+        JMP  NEXTREG
+FIND_NEXT:
+        MOV  T, CUR
+        SUB  T, {_LINK_FROM_NAME_FIELD}
+        LOAD CUR, T          ; CUR = link (previous name field)
+        SET  R, FIND_LOOP
+        JMP  R
+FIND_NOTFOUND:
+        SUB  T, T
+        PUSH_D T             ; xt = 0
+        PUSH_D T             ; flag = 0
         JMP  NEXTREG
 """,
     ),

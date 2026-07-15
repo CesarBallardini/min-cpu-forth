@@ -8,6 +8,7 @@ memory and stacks.
 
 from dependency_injector import containers, providers
 
+from min_cpu_forth.adapters.counted_string import MemoryCountedStringAdapter
 from min_cpu_forth.adapters.dictionary import MemoryDictionaryAdapter
 from min_cpu_forth.adapters.io import (
     BufferCharacterOutputAdapter,
@@ -85,7 +86,13 @@ class KernelContainer(containers.DeclarativeContainer):
     assembler_stages = providers.Container(AssemblerContainer)
 
     system_variables = providers.Singleton(MemorySystemVariablesAdapter, memory=machine.memory)
-    dictionary = providers.Singleton(MemoryDictionaryAdapter, memory=machine.memory, system_variables=system_variables)
+    counted_strings = providers.Singleton(MemoryCountedStringAdapter, memory=machine.memory)
+    dictionary = providers.Singleton(
+        MemoryDictionaryAdapter,
+        memory=machine.memory,
+        system_variables=system_variables,
+        counted_strings=counted_strings,
+    )
 
     kernel_builder = providers.Factory(
         KernelBuilder,
